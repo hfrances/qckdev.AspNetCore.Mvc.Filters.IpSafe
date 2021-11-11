@@ -1,0 +1,153 @@
+# ASP.NET Core
+# Build and test ASP.NET Core projects targeting .NET Core.
+# Add steps that run tests, create a NuGet package, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/dotnet-core
+
+trigger:
+- master
+- main
+- azure-pipelines
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: BuildParameters.RestoreBuildProjects
+    value: '**/*.Build.sln'
+  - name: BuildParameters.TestProjects
+    value: '**/*Test.??proj'
+  - name: BuildParameters.ProjectKey
+    value: $(Build.DefinitionName)
+  - name: BuildParameters.ProjectName
+    value: $(Build.DefinitionName)
+  - name: BuildConfiguration
+    value: 'Release'
+
+steps:
+
+- task: PowerShell@2
+  displayName: Get $(MainProject.Version)
+  inputs:
+    targetType: 'inline'
+    script: |
+      $xml = [Xml] (Get-Content '**/$(BuildParameters.ProjectName).??proj')
+      $version = $xml.Project.PropertyGroup.Version
+      write-output "Version: $version"
+      write-output "##vso[task.setvariable variable=MainProject.Version]$version"
+
+- task: PowerShell@2
+  displayName: 'Export variable list'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $var = (gci env:*).GetEnumerator() | Sort-Object Name
+      $out = ""
+      Foreach ($v in $var) {$out = $out + "`t{0,-28} = {1,-28}`n" -f $v.Name, $v.Value}
+      
+      $fileName = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY "variable-list.md"
+      write-output "dump variables on $fileName"
+      set-content $fileName $out
+   
+      write-output "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Environment Variables;]$fileName"
+
+- task: DotNetCoreCLI@2
+  displayName: Restore
+  inputs:
+    command: restore
+    projects: '**/*.??proj'
+
+- task: SonarCloudPrepare@1
+  inputs:
+    SonarCloud: 'SonarCloud'
+    organization: 'hfrances-github'
+    scannerMode: 'MSBuild'
+    projectKey: '$(BuildParameters.ProjectKey)'
+    projectName: '$(BuildParameters.ProjectName)'
+    projectVersion: '$(MainProject.Version)'
+    extraProperties: |
+      # Additional properties that will be passed to the scanner, 
+      # Put one key=value per line, example:
+      sonar.exclusions=**/obj/**,**/*.dll
+      sonar.cs.opencover.reportsPaths=**/*.opencover.xml
+      sonar.cs.cobertura.reportsPaths=**/*.cobertura.xml
+      sonar.cs.vscoveragexml.reportsPaths=**/*.coveragexml
+      sonar.cs.dotcover.reportsPaths=**/*.html
+      sonar.cs.vstest.reportsPaths=$(Agent.TempDirectory)/*.trx
+
+- task: DotNetCoreCLI@2
+  displayName: Build
+  inputs:
+    projects: '$(BuildParameters.RestoreBuildProjects)'
+    arguments: '--configuration $(BuildConfiguration)'
+
+- task: DotNetCoreCLI@2
+  displayName: 'Test + Coverage'
+  inputs:
+    command: test
+    projects: '$(BuildParameters.TestProjects)'
+    arguments: '--configuration $(BuildConfiguration) /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[*Tests]* /p:CoverletOutput="$(Build.SourcesDirectory)/TestResults/"'
+
+- task: reportgenerator@4
+  inputs:
+    reports: '**/*.[Oo]pencover.xml;**/[Oo]pencover.xml'
+    targetdir: '$(Build.SourcesDirectory)/TestResults/'
+  continueOnError: true
+  displayName: 'Coverage: Parse format'
+
+- task: PowerShell@2
+  inputs:
+    targetType: 'inline'
+    script: |
+      $path = @("**/*.[Cc]obertura.xml", "**/[Cc]obertura.xml");
+      $files = @();
+      $coverageResults = "";
+      Get-Item $path;
+      Get-Item $path | `
+        Group-Object Directory | `
+        ForEach-Object {
+      	  $files += ($_.Group | Sort-Object LastWriteTime | Select-Object -First 1)
+        };
+      
+      Write-Output "`nCollected coverage files:"
+      $files.FullName;
+      $files | ForEach-Object {
+      	if ($coverageResults -ne "") {
+      		$coverageResults +=";";
+      	}
+      	$coverageResults += $files.FullName;
+        Copy-Item $_ $(Agent.TempDirectory); 
+      }
+      write-output "##vso[task.setvariable variable=CoverageResults]$coverageResults"
+  displayName: 'Coverage: Collect files'
+
+#Your build pipeline references an undefined variable named ‘Parameters.codeCoverageTool’. 
+#Create or edit the build pipeline for this YAML file, define the variable on the Variables tab. 
+#See https://go.microsoft.com/fwlink/?linkid=865972
+- task: PublishCodeCoverageResults@1
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(CoverageResults)'
+  continueOnError: true
+  displayName: 'Coverage: Publish report'
+
+- task: SonarCloudAnalyze@1
+
+- task: SonarCloudPublish@1
+  inputs:
+    pollingTimeoutSec: '300'
+
+- task: DotNetCoreCLI@2
+  inputs:
+    command: 'pack'
+    packagesToPack: '**/*.??proj;!examples/**/*.??proj;!**/*.Test.??proj'
+    nobuild: true
+    versioningScheme: 'off'
+  displayName: 'NuGet: Pack'
+
+- task: NuGetCommand@2
+  inputs:
+    command: 'push'
+    packagesToPush: '$(Build.ArtifactStagingDirectory)/**/*.nupkg;!$(Build.ArtifactStagingDirectory)/**/*.symbols.nupkg'
+    nuGetFeedType: 'external'
+    publishFeedCredentials: 'nuget.org'
+  displayName: 'NuGet: Push'
