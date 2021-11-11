@@ -1,7 +1,15 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>netcoreapp3.1</TargetFramework>
+    <Version>1.0.1</Version>
+    <Authors>hfrances</Authors>
+    <Company>TrCode</Company>
+    <Product>qckdev.AspNetCore.Mvc.Filters.IpSafe</Product>
+    <Description>Provides a solution for grant/deny access to some IP ranges.</Description>
+    <PackageProjectUrl>https://github.com/hfrances/qckdev.AspNetCore.Mvc.Filters.IpSafe</PackageProjectUrl>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

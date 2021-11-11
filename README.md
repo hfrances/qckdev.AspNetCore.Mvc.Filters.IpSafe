@@ -5,7 +5,7 @@
 
 # qckdev.AspNetCore.Mvc.Filters.IpSafe
 
-Provides a default set of tools for building an ASP.NET Core application.
+Provides a solution for grant/deny access to some IP ranges.
 
 ```json
 {
@@ -30,8 +30,29 @@ public void ConfigureServices(IServiceCollection services)
 {
 	var ipSafeListSettings = Configuration.GetSection("IpSafeList").Get<IpSafeListSettings>();
 
-    services.AddIpSafeFilter(ipSafeListSettings);
+	services.AddIpSafeFilter(ipSafeListSettings);
 	services.AddControllers();
 }
+```
 
+```cs
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using qckdev.AspNetCore.Mvc.Filters.IpSafe;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+[ApiController]
+[Route("[controller]")]
+public class WeatherForecastController : ControllerBase
+{
+	(...)
+
+	[HttpGet, IpSafeFilter]
+	public IEnumerable<WeatherForecast> Get()
+	{
+		(...)
+	}
+}
 ```
