@@ -146,26 +146,26 @@ jobs:
 #          jsonTargetFiles: '**/appsettings.json'
 #          xmlTransformationRules: '' # disabled
 
-      - task: UseDotNet@2
-        inputs:
-          packageType: 'sdk'
-          version: '6.0.x'
-          includePreviewVersions: false
-        displayName: 'UseDotNet 6.0'
-
-      - task: UseDotNet@2
-        inputs:
-          packageType: 'sdk'
-          version: '5.0.x'
-          includePreviewVersions: false
-        displayName: 'UseDotNet 5.0'
-      
-      - task: UseDotNet@2
-        inputs:
-          packageType: 'runtime'
-          version: '3.1.x'
-          includePreviewVersions: false
-        displayName: 'UseDotNet 3.1'
+#      - task: UseDotNet@2
+#        inputs:
+#          packageType: 'sdk'
+#          version: '6.0.x'
+#          includePreviewVersions: false
+#        displayName: 'UseDotNet 6.0'
+#
+#      - task: UseDotNet@2
+#        inputs:
+#          packageType: 'sdk'
+#          version: '5.0.x'
+#          includePreviewVersions: false
+#        displayName: 'UseDotNet 5.0'
+#      
+#      - task: UseDotNet@2
+#        inputs:
+#          packageType: 'runtime'
+#          version: '3.1.x'
+#          includePreviewVersions: false
+#        displayName: 'UseDotNet 3.1'
 
       - task: DotNetCoreCLI@2
         displayName: Restore

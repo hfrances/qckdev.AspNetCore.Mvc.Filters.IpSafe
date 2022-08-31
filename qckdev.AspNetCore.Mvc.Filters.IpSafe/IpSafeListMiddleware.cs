@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Middlewares
 {
+
     public sealed class IpSafeListMiddleware
     {
 
@@ -21,8 +22,8 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Middlewares
 
         public async Task Invoke(HttpContext context)
         {
-            var ipAddresses = IpSafeListSettings.Value.IpAddresses?.Split(';', StringSplitOptions.RemoveEmptyEntries).Select(IPAddress.Parse) ?? Array.Empty<IPAddress>();
-            var ipNetworks = IpSafeListSettings.Value.IpNetworks?.Split(';', StringSplitOptions.RemoveEmptyEntries).Select(IPNetwork.Parse) ?? Array.Empty<IPNetwork>();
+            var ipAddresses = IpSafeListSettings.Value.IpAddresses?.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPAddress.Parse) ?? Array.Empty<IPAddress>();
+            var ipNetworks = IpSafeListSettings.Value.IpNetworks?.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPNetwork.Parse) ?? Array.Empty<IPNetwork>();
             var remoteIp = context.Connection.RemoteIpAddress;
 
             if (remoteIp == null)
