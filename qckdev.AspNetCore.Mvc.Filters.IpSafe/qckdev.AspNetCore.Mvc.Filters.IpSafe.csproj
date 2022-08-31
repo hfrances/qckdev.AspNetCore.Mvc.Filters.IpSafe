@@ -6,7 +6,7 @@
     <Authors>hfrances</Authors>
     <Company>TrCode</Company>
     <Product>qckdev.AspNetCore.Mvc.Filters.IpSafe</Product>
-    <Description>Provides a solution for grant/deny access to some IP ranges.</Description>
+    <Description>Provides a solution to grant/deny access to some IP ranges.</Description>
     <PackageProjectUrl>https://github.com/hfrances/qckdev.AspNetCore.Mvc.Filters.IpSafe</PackageProjectUrl>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>

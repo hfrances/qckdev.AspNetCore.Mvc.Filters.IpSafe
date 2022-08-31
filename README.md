@@ -5,7 +5,7 @@
 
 # qckdev.AspNetCore.Mvc.Filters.IpSafe
 
-Provides a solution for grant/deny access to some IP ranges.
+Provides a solution to grant/deny access to some IP ranges.
 
 ```json
 {
