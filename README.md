@@ -1,7 +1,7 @@
 <a href="https://www.nuget.org/packages/qckdev.AspNetCore.Mvc.Filters.IpSafe"><img src="https://img.shields.io/nuget/v/qckdev.AspNetCore.Mvc.Filters.IpSafe.svg" alt="NuGet Version"/></a>
 <a href="https://sonarcloud.io/dashboard?id=qckdev.AspNetCore.Mvc.Filters.IpSafe"><img src="https://sonarcloud.io/api/project_badges/measure?project=qckdev.AspNetCore.Mvc.Filters.IpSafe&metric=alert_status" alt="Quality Gate"/></a>
 <a href="https://sonarcloud.io/dashboard?id=qckdev.AspNetCore.Mvc.Filters.IpSafe"><img src="https://sonarcloud.io/api/project_badges/measure?project=qckdev.AspNetCore.Mvc.Filters.IpSafe&metric=coverage" alt="Code Coverage"/></a>
-<a><img src="https://hfrances.visualstudio.com/Main/_apis/build/status/qckdev.AspNetCore.Mvc.Filters.IpSafe?branchName=master" alt="Azure Pipelines Status"/></a>
+<a><img src="https://hfrances.visualstudio.com/qckdev/_apis/build/status/qckdev.AspNetCore.Mvc.Filters.IpSafe?branchName=master" alt="Azure Pipelines Status"/></a>
 
 # qckdev.AspNetCore.Mvc.Filters.IpSafe
 
@@ -28,10 +28,10 @@ using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 
 public void ConfigureServices(IServiceCollection services)
 {
-	var ipSafeListSettings = Configuration.GetSection("IpSafeList").Get<IpSafeListSettings>();
+  var ipSafeListSettings = Configuration.GetSection("IpSafeList").Get<IpSafeListSettings>();
 
-	services.AddIpSafeFilter(ipSafeListSettings);
-	services.AddControllers();
+  services.AddIpSafeFilter(ipSafeListSettings);
+  services.AddControllers();
 }
 ```
 
@@ -47,12 +47,12 @@ using System.Linq;
 [Route("[controller]")]
 public class WeatherForecastController : ControllerBase
 {
-	(...)
+  (...)
 
-	[HttpGet, IpSafeFilter]
-	public IEnumerable<WeatherForecast> Get()
-	{
-		(...)
-	}
+  [HttpGet, IpSafeFilter]
+  public IEnumerable<WeatherForecast> Get()
+  {
+    (...)
+  }
 }
 ```
