@@ -1,153 +1,308 @@
-# ASP.NET Core
-# Build and test ASP.NET Core projects targeting .NET Core.
-# Add steps that run tests, create a NuGet package, deploy, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/languages/dotnet-core
+###############################
+### Template Version: 2.2.1 ###
+### Author: hfrances        ###
+### Date: 06/07/2022        ###
+###############################
 
 trigger:
-- master
-- main
-- azure-pipelines
+  - master
+  - main
+  - staging
+  - azure-pipelines
 
 pool:
   vmImage: 'ubuntu-latest'
 
+parameters:
+  - name: Deploy
+    type: string
+    values:
+      - auto
+      - true
+      - false
+    default: auto
+  - name: Analyze
+    type: string
+    values:
+      - disabled
+      - auto
+      - true
+      - false
+    default: auto
+
 variables:
   - name: BuildParameters.RestoreBuildProjects
-    value: '**/*.Build.sln'
+    value: '**/*.sln'
+  - name: BuildParameters.Solution
+    value: '*.Build.sln'
   - name: BuildParameters.TestProjects
     value: '**/*Test.??proj'
   - name: BuildParameters.ProjectKey
     value: $(Build.DefinitionName)
   - name: BuildParameters.ProjectName
-    value: $(Build.DefinitionName)
+    value: $(BuildParameters.ProjectKey)
+  - name: BuildParameters.OutputFile
+    value: ''
   - name: BuildConfiguration
     value: 'Release'
+  - name: Deploy
+    value: ${{ parameters.Deploy }}
+  - name: PublishEnabled
+    value: $[or(eq(variables.Deploy, 'true'), and(eq(variables.Deploy, 'auto'), or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))))]
+  - ${{ if ne(parameters.Analyze, 'disabled') }} :
+    - name: Analyze
+      value: ${{ parameters.Analyze }}
+    - name: SonarQubeEnabled
+      value: $[or(eq(variables.Analyze, 'true'), and(eq(variables.Analyze, 'auto'), or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/staging'))))]
 
-steps:
+jobs:
+  - job: Build
+    steps:
+      - task: PowerShell@2
+        displayName: Create 'drop' folder
+        inputs:
+          targetType: 'inline'
+          script: |
+            $path = '$(Build.ArtifactStagingDirectory)/drop';
+            if (!(Test-Path $path)) {
+              New-Item -itemType Directory -Path '$(Build.ArtifactStagingDirectory)' -Name 'drop';
+            }
 
-- task: PowerShell@2
-  displayName: Get $(MainProject.Version)
-  inputs:
-    targetType: 'inline'
-    script: |
-      $xml = [Xml] (Get-Content '**/$(BuildParameters.ProjectName).??proj')
-      $version = $xml.Project.PropertyGroup.Version
-      write-output "Version: $version"
-      write-output "##vso[task.setvariable variable=MainProject.Version]$version"
+      - task: PowerShell@2
+        displayName: Get main project from Solution
+        inputs:
+          targetType: 'inline'
+          script: |
+              $path = '$(BuildParameters.Solution)';
 
-- task: PowerShell@2
-  displayName: 'Export variable list'
-  inputs:
-    targetType: 'inline'
-    script: |
-      $var = (gci env:*).GetEnumerator() | Sort-Object Name
-      $out = ""
-      Foreach ($v in $var) {$out = $out + "`t{0,-28} = {1,-28}`n" -f $v.Name, $v.Value}
+              # Find solution file.
+              $solution = (Get-Item $path);
+              if ($null -eq $solution) {
+                write-error 'Solution file not found: $path';
+              }
+              else {
+                # Get first project in the solution. That is the main project.
+                $content = (Get-Content $solution);
+                $pattern = '(?m)Project\(.*\)\s?=\s?"(?<ProjectName>.*)",\s?"(?<ProjectPath>.*)",\s?.*"';
+                $projects = $content | Select-String $pattern -AllMatches;
+
+                if ($projects -and $projects.Matches.Count -gt 0) {
+                  $projectPath = $projects.Matches[0].Groups['ProjectPath'].Value; #TODO: Ruta UNIX?
+                  $projectFile = Join-Path $solution.Directory $projectPath;
+                  $file = (Get-Item $projectFile);
+
+                  if ($null -eq $file) {
+                    write-error 'Project file not found: $projectFile';
+                  }
+                  else {
+                    write-output $($file.FullName);
+                    write-output "##vso[task.setvariable variable=MainProject.FullName]$($file.FullName)";
+                  }
+                }
+              }
+
+      - task: PowerShell@2
+        displayName: Get main project properties
+        inputs:
+          targetType: 'inline'
+          script: |
+            $file = (Get-Item '$(MainProject.FullName)');
+
+            if ($file -eq $null) {
+              write-error 'Project file not found: $(MainProject.FullName)';
+            }
+            else {
+              $packageName = $file.BaseName.ToLower();
+              write-output "Package name: $packageName";
+              write-output "##vso[task.setvariable variable=MainProject.PackageName]$packageName";
+       
+              $xml = [Xml] (Get-Content $file);
+              $version = "$($xml.Project.PropertyGroup.Version)".Trim();
+              write-output "Version: $version";
+              write-output "##vso[task.setvariable variable=MainProject.Version]$version";
+              $description = "$($xml.Project.PropertyGroup.Description)".Trim();
+              write-output "Description: $description";
+              write-output "##vso[task.setvariable variable=MainProject.Description]$description";
+            }
+     
+      - task: PowerShell@2
+        displayName: 'Export variable list'
+        inputs:
+          targetType: 'inline'
+          script: |
+            $var = (gci env:*).GetEnumerator() | Sort-Object Name
+            $out = ""
+            Foreach ($v in $var) {$out = $out + "`t{0,-28} = {1,-28}`n" -f $v.Name, $v.Value}
+          
+            $fileName = Join-Path "$env:BUILD_ARTIFACTSTAGINGDIRECTORY" "drop/variable-list.md"
+            write-output "dump variables on $fileName"
+            set-content $fileName $out
       
-      $fileName = Join-Path $env:BUILD_ARTIFACTSTAGINGDIRECTORY "variable-list.md"
-      write-output "dump variables on $fileName"
-      set-content $fileName $out
-   
-      write-output "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Environment Variables;]$fileName"
+            write-output "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Environment Variables;]$fileName" 
+     
+#      - task: FileTransform@2
+#        inputs:
+#          folderPath: '$(System.DefaultWorkingDirectory)'
+#          jsonTargetFiles: '**/appsettings.json'
+#          xmlTransformationRules: '' # disabled
 
-- task: DotNetCoreCLI@2
-  displayName: Restore
-  inputs:
-    command: restore
-    projects: '**/*.??proj'
+      - task: UseDotNet@2
+        inputs:
+          packageType: 'sdk'
+          version: '6.0.x'
+          includePreviewVersions: false
+        displayName: 'UseDotNet 6.0'
 
-- task: SonarCloudPrepare@1
-  inputs:
-    SonarCloud: 'SonarCloud'
-    organization: 'hfrances-github'
-    scannerMode: 'MSBuild'
-    projectKey: '$(BuildParameters.ProjectKey)'
-    projectName: '$(BuildParameters.ProjectName)'
-    projectVersion: '$(MainProject.Version)'
-    extraProperties: |
-      # Additional properties that will be passed to the scanner, 
-      # Put one key=value per line, example:
-      sonar.exclusions=**/obj/**,**/*.dll
-      sonar.cs.opencover.reportsPaths=**/*.opencover.xml
-      sonar.cs.cobertura.reportsPaths=**/*.cobertura.xml
-      sonar.cs.vscoveragexml.reportsPaths=**/*.coveragexml
-      sonar.cs.dotcover.reportsPaths=**/*.html
-      sonar.cs.vstest.reportsPaths=$(Agent.TempDirectory)/*.trx
-
-- task: DotNetCoreCLI@2
-  displayName: Build
-  inputs:
-    projects: '$(BuildParameters.RestoreBuildProjects)'
-    arguments: '--configuration $(BuildConfiguration)'
-
-- task: DotNetCoreCLI@2
-  displayName: 'Test + Coverage'
-  inputs:
-    command: test
-    projects: '$(BuildParameters.TestProjects)'
-    arguments: '--configuration $(BuildConfiguration) /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[*Tests]* /p:CoverletOutput="$(Build.SourcesDirectory)/TestResults/"'
-
-- task: reportgenerator@4
-  inputs:
-    reports: '**/*.[Oo]pencover.xml;**/[Oo]pencover.xml'
-    targetdir: '$(Build.SourcesDirectory)/TestResults/'
-  continueOnError: true
-  displayName: 'Coverage: Parse format'
-
-- task: PowerShell@2
-  inputs:
-    targetType: 'inline'
-    script: |
-      $path = @("**/*.[Cc]obertura.xml", "**/[Cc]obertura.xml");
-      $files = @();
-      $coverageResults = "";
-      Get-Item $path;
-      Get-Item $path | `
-        Group-Object Directory | `
-        ForEach-Object {
-      	  $files += ($_.Group | Sort-Object LastWriteTime | Select-Object -First 1)
-        };
+      - task: UseDotNet@2
+        inputs:
+          packageType: 'sdk'
+          version: '5.0.x'
+          includePreviewVersions: false
+        displayName: 'UseDotNet 5.0'
       
-      Write-Output "`nCollected coverage files:"
-      $files.FullName;
-      $files | ForEach-Object {
-      	if ($coverageResults -ne "") {
-      		$coverageResults +=";";
-      	}
-      	$coverageResults += $files.FullName;
-        Copy-Item $_ $(Agent.TempDirectory); 
-      }
-      write-output "##vso[task.setvariable variable=CoverageResults]$coverageResults"
-  displayName: 'Coverage: Collect files'
+      - task: UseDotNet@2
+        inputs:
+          packageType: 'runtime'
+          version: '3.1.x'
+          includePreviewVersions: false
+        displayName: 'UseDotNet 3.1'
 
-#Your build pipeline references an undefined variable named ‘Parameters.codeCoverageTool’. 
-#Create or edit the build pipeline for this YAML file, define the variable on the Variables tab. 
-#See https://go.microsoft.com/fwlink/?linkid=865972
-- task: PublishCodeCoverageResults@1
-  inputs:
-    codeCoverageTool: 'Cobertura'
-    summaryFileLocation: '$(CoverageResults)'
-  continueOnError: true
-  displayName: 'Coverage: Publish report'
+      - task: DotNetCoreCLI@2
+        displayName: Restore
+        inputs:
+          command: 'restore'
+          projects: '**/*.??proj'
+     
+      - ${{ if ne(parameters.Analyze, 'disabled') }} :
+        - task: SonarCloudPrepare@1
+          inputs:
+            SonarCloud: 'SonarCloud'
+            organization: 'hfrances-github'
+            scannerMode: 'MSBuild'
+            projectKey: '$(BuildParameters.ProjectKey)'
+            projectName: '$(BuildParameters.ProjectName)'
+            projectVersion: '$(MainProject.Version)'
+            extraProperties: |
+              # Additional properties that will be passed to the scanner, 
+              # Put one key=value per line, example:
+              sonar.exclusions=**/obj/**,**/*.dll
+              sonar.cs.opencover.reportsPaths=**/*.opencover.xml
+              sonar.cs.cobertura.reportsPaths=**/*.cobertura.xml
+              sonar.cs.vscoveragexml.reportsPaths=**/*.coveragexml
+              sonar.cs.dotcover.reportsPaths=**/*.html
+              sonar.cs.vstest.reportsPaths=$(Agent.TempDirectory)/*.trx
+          condition: eq(variables.SonarQubeEnabled, 'true')
 
-- task: SonarCloudAnalyze@1
+      - task: DotNetCoreCLI@2
+        displayName: Build
+        inputs:
+          projects: '$(BuildParameters.RestoreBuildProjects)'
+          arguments: '--configuration $(BuildConfiguration)'
 
-- task: SonarCloudPublish@1
-  inputs:
-    pollingTimeoutSec: '300'
+      - task: DotNetCoreCLI@2
+        displayName: 'Test + Coverage'
+        inputs:
+          command: test
+          projects: '$(BuildParameters.TestProjects)'
+          arguments: '--configuration $(BuildConfiguration) /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[*Tests]*" /p:CoverletOutput="$(Build.SourcesDirectory)/TestResults/"'
 
-- task: DotNetCoreCLI@2
-  inputs:
-    command: 'pack'
-    packagesToPack: '**/*.??proj;!examples/**/*.??proj;!**/*.Test.??proj'
-    nobuild: true
-    versioningScheme: 'off'
-  displayName: 'NuGet: Pack'
+      - task: PowerShell@2
+        inputs:
+          targetType: 'inline'
+          script: |
+            $path = '$(BuildParameters.TestProjects)'
+            $directoryInfo = Get-ChildItem "$path" | Measure-Object;
+            $hasTests = $directoryInfo.Count -gt 0;
+            write-output "##vso[task.setvariable variable=HasTests]$hasTests";
+        displayName: 'Coverage: Check if there are test projects'
 
-- task: NuGetCommand@2
-  inputs:
-    command: 'push'
-    packagesToPush: '$(Build.ArtifactStagingDirectory)/**/*.nupkg;!$(Build.ArtifactStagingDirectory)/**/*.symbols.nupkg'
-    nuGetFeedType: 'external'
-    publishFeedCredentials: 'nuget.org'
-  displayName: 'NuGet: Push'
+      - task: reportgenerator@4
+        inputs:
+          reports: '**/*.[Oo]pencover.xml;**/[Oo]pencover.xml;*.[Oo]pencover.xml;[Oo]pencover.xml'
+          targetdir: '$(Build.SourcesDirectory)/TestResults/'
+        continueOnError: true
+        condition: eq(variables.HasTests, 'true')
+        displayName: 'Coverage: Parse format'
+
+      - task: PowerShell@2
+        inputs:
+          targetType: 'inline'
+          script: |
+            $path = @("**/*.[Cc]obertura.xml", "**/[Cc]obertura.xml", "*.[Cc]obertura.xml", "[Cc]obertura.xml");
+            $files = @();
+            $coverageResults = "";
+            Get-Item $path;
+            Get-Item $path | `
+              Group-Object Directory | `
+              ForEach-Object {
+            	  $files += ($_.Group | Sort-Object LastWriteTime | Select-Object -First 1)
+              };
+            
+            Write-Output "`nCollected coverage files:"
+            $files.FullName;
+            $files | ForEach-Object {
+            	if ($coverageResults -ne "") {
+            		$coverageResults +=";";
+            	}
+            	$coverageResults += $files.FullName;
+              Copy-Item $_ $(Agent.TempDirectory); 
+            }
+            write-output "##vso[task.setvariable variable=CoverageResults]$coverageResults"
+        condition: eq(variables.HasTests, 'true')
+        displayName: 'Coverage: Collect files'
+     
+      - task: PublishCodeCoverageResults@1
+        inputs:
+          codeCoverageTool: 'Cobertura'
+          summaryFileLocation: '$(CoverageResults)'
+        continueOnError: true
+        condition: eq(variables.HasTests, 'true')
+        displayName: 'Coverage: Publish report'
+     
+      - ${{ if ne(parameters.Analyze, 'disabled') }} :
+        - task: SonarCloudAnalyze@1
+          condition: eq(variables.SonarQubeEnabled, 'true')
+        - task: SonarCloudPublish@1
+          inputs:
+            pollingTimeoutSec: '300'
+          condition: eq(variables.SonarQubeEnabled, 'true')
+
+      - task: DotNetCoreCLI@2
+        inputs:
+          command: 'pack'
+          packagesToPack: '**/*.??proj;!examples/**/*.??proj;!**/*.Test.??proj;!**/*.Test.*.??proj'
+          packDirectory: '$(Build.ArtifactStagingDirectory)/build'
+          nobuild: true
+          versioningScheme: 'off'
+        displayName: 'NuGet: Pack'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: drop'
+        inputs:
+          pathtoPublish: '$(Build.ArtifactStagingDirectory)/drop'
+        condition: succeededOrFailed()
+     
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish Artifact: build'
+        inputs:
+          targetPath: '$(Build.ArtifactStagingDirectory)/build'
+          artifact: 'build'
+    
+      - task: NuGetCommand@2
+        inputs:
+          command: 'push'
+          packagesToPush: '$(Build.ArtifactStagingDirectory)/**/*.nupkg;!$(Build.ArtifactStagingDirectory)/**/*.symbols.nupkg'
+          nuGetFeedType: 'external'
+          publishFeedCredentials: 'nuget.org'
+        displayName: 'NuGet: Push'
+        condition: eq(variables.PublishEnabled, 'true')
+
+################################################################################################
+# Version 2.1.0: Auto-detect main project, 
+#                Allow disable SonarQube without comment lines.
+#                Include name and version in package file name.
+# Version 2.1.1: Fix 'Publish Artifact: build'
+#                Add condition for 'Nuget: Push'
+# Version 2.2.0: Add 'UseDotNet 6.0'
+# Version 2.2.1: Fix 'Nuget pack'
+################################################################################################
