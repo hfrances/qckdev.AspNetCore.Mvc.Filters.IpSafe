@@ -39,13 +39,19 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 
         private void Validate(ActionExecutingContext context)
         {
+            
             var ipAddresses = IpSafeListSettings.Value.IpAddresses?.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPAddress.Parse) ?? Array.Empty<IPAddress>();
             var ipNetworks = IpSafeListSettings.Value.IpNetworks?.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPNetwork.Parse) ?? Array.Empty<IPNetwork>();
             var remoteIp = context.HttpContext.Connection.RemoteIpAddress;
+            var allowAny = context.Filters.OfType<AllowAnyIpAddressAttribute>().Any();
 
             if (remoteIp == null)
             {
                 throw new ArgumentException("Remote IP is NULL, may due to missing ForwardedHeaders.");
+            }
+            else if (allowAny)
+            {
+                // Do nothing.
             }
             else
             {
