@@ -22,38 +22,37 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Middlewares
 
         public async Task Invoke(HttpContext context)
         {
-            var ipAddresses = 
+            var ipAddresses =
                 IpSafeListSettings.Value.IpAddresses?
-                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPAddress.Parse) 
+                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPAddress.Parse)
                 ?? Array.Empty<IPAddress>();
-            var ipNetworks = 
+            var ipNetworks =
                 IpSafeListSettings.Value.IpNetworks?
-                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPNetwork.Parse) 
+                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPNetwork.Parse)
                 ?? Array.Empty<IPNetwork>();
             var remoteIp = context.Connection.RemoteIpAddress;
 
-            if (remoteIp == null)
+            if (ipAddresses.Any() || ipNetworks.Any())
             {
-                throw new ArgumentException("Remote IP is NULL, may due to missing ForwardedHeaders.");
-            }
-            else
-            {
-                if (remoteIp.IsIPv4MappedToIPv6)
+                if (remoteIp == null)
                 {
-                    remoteIp = remoteIp.MapToIPv4();
+                    throw new ArgumentException("Remote IP is NULL, may due to missing ForwardedHeaders.");
                 }
-
-                if (ipAddresses.Any() || ipNetworks.Any())
+                else
                 {
+                    if (remoteIp.IsIPv4MappedToIPv6)
+                    {
+                        remoteIp = remoteIp.MapToIPv4();
+                    }
                     if (!ipAddresses.Contains(remoteIp) && !ipNetworks.Any(x => x.Contains(remoteIp)))
                     {
                         context.Response.StatusCode = StatusCodes.Status403Forbidden;
                     }
                 }
-                else
-                {
-                    // Do Nothing. No restrictions defined.
-                }
+            }
+            else
+            {
+                // Do Nothing. No restrictions defined.
             }
             await Next(context);
         }

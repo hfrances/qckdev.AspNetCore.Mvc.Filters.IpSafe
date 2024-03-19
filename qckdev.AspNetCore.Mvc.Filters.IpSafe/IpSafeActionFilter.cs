@@ -51,26 +51,28 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             var remoteIp = context.HttpContext.Connection.RemoteIpAddress;
             var allowAny = context.Filters.OfType<AllowAnyIpAddressAttribute>().Any();
 
-            if (remoteIp == null)
-            {
-                throw new ArgumentException("Remote IP is NULL, may due to missing ForwardedHeaders.");
-            }
-            else if (allowAny)
+            if (allowAny)
             {
                 // Do nothing. AllowAnyIp attribute set.
             }
             else
             {
-                if (remoteIp.IsIPv4MappedToIPv6)
-                {
-                    remoteIp = remoteIp.MapToIPv4();
-                }
-
                 if (ipAddresses.Any() || ipNetworks.Any())
                 {
-                    if (!ipAddresses.Contains(remoteIp) && !ipNetworks.Any(x => x.Contains(remoteIp)))
+                    if (remoteIp == null)
                     {
-                        context.Result = new UnauthorizedResult();
+                        throw new ArgumentException("Remote IP is NULL, may due to missing ForwardedHeaders.");
+                    }
+                    else
+                    {
+                        if (remoteIp.IsIPv4MappedToIPv6)
+                        {
+                            remoteIp = remoteIp.MapToIPv4();
+                        }
+                        if (!ipAddresses.Contains(remoteIp) && !ipNetworks.Any(x => x.Contains(remoteIp)))
+                        {
+                            context.Result = new UnauthorizedResult();
+                        }
                     }
                 }
                 else
