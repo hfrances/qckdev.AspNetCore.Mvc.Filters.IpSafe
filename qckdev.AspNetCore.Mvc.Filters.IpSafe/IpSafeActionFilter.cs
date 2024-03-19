@@ -39,9 +39,15 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 
         private void Validate(ActionExecutingContext context)
         {
-            
-            var ipAddresses = IpSafeListSettings.Value.IpAddresses?.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPAddress.Parse) ?? Array.Empty<IPAddress>();
-            var ipNetworks = IpSafeListSettings.Value.IpNetworks?.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPNetwork.Parse) ?? Array.Empty<IPNetwork>();
+
+            var ipAddresses =
+                IpSafeListSettings.Value.IpAddresses?
+                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPAddress.Parse)
+                ?? Array.Empty<IPAddress>();
+            var ipNetworks =
+                IpSafeListSettings.Value.IpNetworks?
+                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPNetwork.Parse)
+                ?? Array.Empty<IPNetwork>();
             var remoteIp = context.HttpContext.Connection.RemoteIpAddress;
             var allowAny = context.Filters.OfType<AllowAnyIpAddressAttribute>().Any();
 
@@ -51,7 +57,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             }
             else if (allowAny)
             {
-                // Do nothing.
+                // Do nothing. AllowAnyIp attribute set.
             }
             else
             {
@@ -60,9 +66,16 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
                     remoteIp = remoteIp.MapToIPv4();
                 }
 
-                if (!ipAddresses.Contains(remoteIp) && !ipNetworks.Any(x => x.Contains(remoteIp)))
+                if (ipAddresses.Any() || ipNetworks.Any())
                 {
-                    context.Result = new UnauthorizedResult();
+                    if (!ipAddresses.Contains(remoteIp) && !ipNetworks.Any(x => x.Contains(remoteIp)))
+                    {
+                        context.Result = new UnauthorizedResult();
+                    }
+                }
+                else
+                {
+                    // Do Nothing. No restrictions defined.
                 }
             }
         }

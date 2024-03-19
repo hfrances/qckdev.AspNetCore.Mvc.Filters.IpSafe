@@ -13,8 +13,8 @@ namespace Microsoft.Extensions.DependencyInjection
             {
                 services.Configure<IpSafeListSettings>(config =>
                 {
-                    config.IpAddresses = settings.IpAddresses;
-                    config.IpNetworks = settings.IpNetworks;
+                    config.IpAddresses = settings?.IpAddresses;
+                    config.IpNetworks = settings?.IpNetworks;
                 });
             }
             return services;
