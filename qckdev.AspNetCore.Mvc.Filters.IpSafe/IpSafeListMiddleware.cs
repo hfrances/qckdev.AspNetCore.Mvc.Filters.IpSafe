@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Linq;
@@ -13,41 +14,32 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Middlewares
 
         RequestDelegate Next { get; }
         IOptions<IpSafeListSettings> IpSafeListSettings { get; }
+        ILogger Logger { get; }
 
-        public IpSafeListMiddleware(RequestDelegate next, IOptions<IpSafeListSettings> ipSafeListSettings)
+        public IpSafeListMiddleware(RequestDelegate next, IOptions<IpSafeListSettings> ipSafeListSettings, Logger<IpSafeListMiddleware> logger)
         {
             this.Next = next;
             this.IpSafeListSettings = ipSafeListSettings;
+            this.Logger = logger;
         }
 
         public async Task Invoke(HttpContext context)
         {
-            var ipAddresses =
-                IpSafeListSettings.Value.IpAddresses?
-                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPAddress.Parse)
-                ?? Array.Empty<IPAddress>();
-            var ipNetworks =
-                IpSafeListSettings.Value.IpNetworks?
-                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPNetwork.Parse)
-                ?? Array.Empty<IPNetwork>();
-            var remoteIp = context.Connection.RemoteIpAddress;
+            var properties = IpSafeHelper.GetIpSafeProperties(IpSafeListSettings.Value);
+            var remoteIp = IpSafeHelper.GetRemoteIpToIpv4(context);
+            var endpoint = context.Request.Path;
 
-            if (ipAddresses.Any() || ipNetworks.Any())
+            Logger.LogDebug($"IP {(remoteIp?.ToString() ?? "<unknown>")} made a request to endpoint: {(endpoint.ToString() ?? "<unknown>")}");
+            if (properties.IpAddresses.Any() || properties.IpNetworks.Any())
             {
                 if (remoteIp == null)
                 {
                     throw new ArgumentException("Remote IP is NULL, may due to missing ForwardedHeaders.");
                 }
-                else
+                else if (!properties.IpAddresses.Contains(remoteIp) && !properties.IpNetworks.Any(x => x.Contains(remoteIp)))
                 {
-                    if (remoteIp.IsIPv4MappedToIPv6)
-                    {
-                        remoteIp = remoteIp.MapToIPv4();
-                    }
-                    if (!ipAddresses.Contains(remoteIp) && !ipNetworks.Any(x => x.Contains(remoteIp)))
-                    {
-                        context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    }
+                    Logger.LogWarning($"Request rejected for IP {(remoteIp?.ToString() ?? "<unknown>")} to endpoint: {(endpoint.ToString() ?? "<unknown>")}");
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 }
             }
             else

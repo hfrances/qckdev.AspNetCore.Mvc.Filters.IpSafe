@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
+using System.Globalization;
 
 namespace IpSafeExample
 {
@@ -34,7 +35,7 @@ namespace IpSafeExample
             }
 
             app.UseHttpsRedirection();
-
+            app.UseIpSafeFilter();
             app.UseRouting();
 
             app.UseAuthorization();

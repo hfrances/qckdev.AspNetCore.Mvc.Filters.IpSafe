@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Linq;
@@ -15,11 +16,12 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
     sealed class IpSafeActionFilter : IActionFilter
     {
         IOptions<IpSafeListSettings> IpSafeListSettings { get; }
+        ILogger Logger { get; }
 
-
-        public IpSafeActionFilter(IOptions<IpSafeListSettings> ipSafeListSettings)
+        public IpSafeActionFilter(IOptions<IpSafeListSettings> ipSafeListSettings, ILogger<IpSafeActionFilter> logger)
         {
             this.IpSafeListSettings = ipSafeListSettings;
+            this.Logger = logger;
         }
 
         public void OnAuthorization(AuthorizationFilterContext _)
@@ -39,46 +41,31 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 
         private void Validate(ActionExecutingContext context)
         {
-
-            var ipAddresses =
-                IpSafeListSettings.Value.IpAddresses?
-                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPAddress.Parse)
-                ?? Array.Empty<IPAddress>();
-            var ipNetworks =
-                IpSafeListSettings.Value.IpNetworks?
-                    .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries).Select(IPNetwork.Parse)
-                ?? Array.Empty<IPNetwork>();
-            var remoteIp = context.HttpContext.Connection.RemoteIpAddress;
+            var properties = IpSafeHelper.GetIpSafeProperties(IpSafeListSettings.Value);
+            var remoteIp = IpSafeHelper.GetRemoteIpToIpv4(context.HttpContext);
             var allowAny = context.Filters.OfType<AllowAnyIpAddressAttribute>().Any();
-
+            var endpoint = context.HttpContext.Request.Path;
+            
+            Logger.LogDebug($"IP {(remoteIp?.ToString() ?? "<unknown>")} made a request to endpoint: {(endpoint.ToString() ?? "<unknown>")}");
             if (allowAny)
             {
                 // Do nothing. AllowAnyIp attribute set.
             }
+            else if (properties.IpAddresses.Any() || properties.IpNetworks.Any())
+            {
+                if (remoteIp == null)
+                {
+                    throw new ArgumentException("Remote IP is NULL, may due to missing ForwardedHeaders.");
+                }
+                else if (!properties.IpAddresses.Contains(remoteIp) && !properties.IpNetworks.Any(x => x.Contains(remoteIp)))
+                {
+                    Logger.LogWarning($"Request rejected for IP {(remoteIp?.ToString() ?? "<unknown>")} to endpoint: {(endpoint.ToString() ?? "<unknown>")}");
+                    context.Result = new StatusCodeResult(StatusCodes.Status403Forbidden);
+                }
+            }
             else
             {
-                if (ipAddresses.Any() || ipNetworks.Any())
-                {
-                    if (remoteIp == null)
-                    {
-                        throw new ArgumentException("Remote IP is NULL, may due to missing ForwardedHeaders.");
-                    }
-                    else
-                    {
-                        if (remoteIp.IsIPv4MappedToIPv6)
-                        {
-                            remoteIp = remoteIp.MapToIPv4();
-                        }
-                        if (!ipAddresses.Contains(remoteIp) && !ipNetworks.Any(x => x.Contains(remoteIp)))
-                        {
-                            context.Result = new UnauthorizedResult();
-                        }
-                    }
-                }
-                else
-                {
-                    // Do Nothing. No restrictions defined.
-                }
+                // Do Nothing. No restrictions defined.
             }
         }
 

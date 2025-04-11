@@ -1,7 +1,7 @@
 ###############################
-### Template Version: 2.2.1 ###
+### Template Version: 3.0.0 ###
 ### Author: hfrances        ###
-### Date: 06/07/2022        ###
+### Date: 27/07/2025        ###
 ###############################
 
 trigger:
@@ -29,10 +29,13 @@ parameters:
       - true
       - false
     default: auto
+  - name: ForceVersion
+    type: boolean
+    default: false # Indica si debe reemplazar la versión siempre o si debe hacerlo solamente cuando coincide con el proyecto principal.
 
 variables:
   - name: BuildParameters.RestoreBuildProjects
-    value: '**/*.sln'
+    value: '**/*.Build.sln'
   - name: BuildParameters.Solution
     value: '*.Build.sln'
   - name: BuildParameters.TestProjects
@@ -48,12 +51,16 @@ variables:
   - name: Deploy
     value: ${{ parameters.Deploy }}
   - name: PublishEnabled
-    value: $[or(eq(variables.Deploy, 'true'), and(eq(variables.Deploy, 'auto'), or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))))]
+    value: $[or(eq(variables.Deploy, 'true'), and(eq(variables.Deploy, 'auto'), in(variables['Build.SourceBranch'], 'refs/heads/master', 'refs/heads/main', 'refs/heads/staging', 'refs/heads/alpha')))]
   - ${{ if ne(parameters.Analyze, 'disabled') }} :
     - name: Analyze
       value: ${{ parameters.Analyze }}
     - name: SonarQubeEnabled
-      value: $[or(eq(variables.Analyze, 'true'), and(eq(variables.Analyze, 'auto'), or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/staging'))))]
+      value: $[or(eq(variables.Analyze, 'true'), and(eq(variables.Analyze, 'auto'), in(variables['Build.SourceBranch'], 'refs/heads/master', 'refs/heads/main', 'refs/heads/staging', 'refs/heads/alpha')))]
+  - name: SupportedFrameworks
+    value: "8.0;7.0;6.0;5.0;3.1"
+  - name: ForceVersion
+    value: ${{ parameters.ForceVersion }}
 
 jobs:
   - job: Build
@@ -69,7 +76,6 @@ jobs:
             }
 
       - task: PowerShell@2
-        displayName: Get main project from Solution
         inputs:
           targetType: 'inline'
           script: |
@@ -78,7 +84,7 @@ jobs:
               # Find solution file.
               $solution = (Get-Item $path);
               if ($null -eq $solution) {
-                write-error 'Solution file not found: $path';
+                write-error "Solution file not found: $path";
               }
               else {
                 # Get first project in the solution. That is the main project.
@@ -87,7 +93,7 @@ jobs:
                 $projects = $content | Select-String $pattern -AllMatches;
 
                 if ($projects -and $projects.Matches.Count -gt 0) {
-                  $projectPath = $projects.Matches[0].Groups['ProjectPath'].Value; #TODO: Ruta UNIX?
+                  $projectPath = $projects.Matches[0].Groups['ProjectPath'].Value;
                   $projectFile = Join-Path $solution.Directory $projectPath;
                   $file = (Get-Item $projectFile);
 
@@ -100,33 +106,226 @@ jobs:
                   }
                 }
               }
+        displayName: Get main project from Solution
 
       - task: PowerShell@2
-        displayName: Get main project properties
         inputs:
           targetType: 'inline'
           script: |
             $file = (Get-Item '$(MainProject.FullName)');
 
-            if ($file -eq $null) {
+            if ($null -eq $file) {
               write-error 'Project file not found: $(MainProject.FullName)';
             }
             else {
-              $packageName = $file.BaseName.ToLower();
+              # Get package name
+              $packageName = $file.BaseName?.ToLower();
               write-output "Package name: $packageName";
               write-output "##vso[task.setvariable variable=MainProject.PackageName]$packageName";
-       
+
               $xml = [Xml] (Get-Content $file);
-              $version = "$($xml.Project.PropertyGroup.Version)".Trim();
+
+              # Set version
+              $version = "$($xml.Project.PropertyGroup.Version)"?.Trim();
               write-output "Version: $version";
               write-output "##vso[task.setvariable variable=MainProject.Version]$version";
-              $description = "$($xml.Project.PropertyGroup.Description)".Trim();
+                
+              # Set description
+              $description = "$($xml.Project.PropertyGroup.Description)"?.Trim();
               write-output "Description: $description";
               write-output "##vso[task.setvariable variable=MainProject.Description]$description";
             }
+        displayName: Get main project properties
+
+      - task: PowerShell@2
+        inputs:
+          pwsh: true
+          targetType: 'inline'
+          script: |
+            $files = Get-ChildItem -Recurse -Filter *.??proj;
+            
+            # Get supported frameworks.
+            $supportedFrameworks = "$(SupportedFrameworks)".Split(';') | ForEach-Object { $_.Trim() };
+            write-output "Supported frameworks: $supportedFrameworks";
+            # Get installed frameworks.            
+            $installedSdks = &dotnet --list-sdks;
+            $installedFrameworks = New-Object System.Collections.Generic.HashSet[string];
+            foreach ($sdk in $installedSdks) {
+              if ($sdk -match '^(?<version>\d+\.\d+)') {
+                $installedFrameworks.Add($matches['version']) | Out-Null;
+              }
+            }
+            write-output "Installed frameworks: $installedFrameworks";
+            write-output '';
+            # Calculate necessary frameworks.
+            if ($files.Count -eq 0) {
+              write-error 'No project files found in the specified directory';
+            } else {
+              $files | ForEach-Object {
+                $file = $_;
+                write-output "Processing file: $file";
+      
+                # Load the XML content of the project file
+                $xml = [xml](Get-Content -Path $file.FullName);
+      
+                # Calculate target frameworks
+                $frameworks = "$($xml.Project.PropertyGroup.TargetFrameworks)"?.Trim().Split(";");
+                write-output "Target frameworks: $frameworks";
+                $frameworks | ForEach-Object {
+                  $version = [regex]::match($_, '(\d+\.\d+)').Value;
+                  if ($version) {
+                    write-output "##vso[task.setvariable variable=BuildParameters.TargetFramework_$version]$_";
+                    if ($installedVersions -notcontains $version) {
+                      write-output "##vso[task.setvariable variable=BuildParameters.TargetFramework_Install_$version]$_";
+                    }
+                  }
+                }
+                write-output '';
+              }
+            }
+        displayName: Calculate target frameworks
+
+      - task: PowerShell@2
+        inputs:
+          targetType: 'inline'
+          script: |
+            ############################################################
+            # Establecer la versión release:
+            # Si la versión contiene un <prerelease>:
+            # - releaseVersion: <version>-<prerelease>+<build>
+            # - dockerVersion: <version>-<prerelease>
+            # - dockerAlias: <prerelease>
+            # Sino, si la rama es master o main: 
+            # - releaseVersion: <version>
+            # - dockerVersion: <version>
+            # - dockerAlias: latest
+            # Sino, si la rama es staging:
+            # - releaseVersion: <version>-alpha.<build>
+            # - dockerVersion: <version>-alpha.<build>
+            # - dockerAlias: alpha
+            # Sino, si es cualquier otra rama:
+            # - releaseVersion: <version>-<rama>.<build>
+            # - dockerVersion: <version>-<rama>.<build>
+            # - dockerAlias: alpha
+            # NOTA: <prerelease> podría contener o no puntos. Ejemplos:
+            # - 1.0.0-beta
+            # - 1.0.0-beta.1
+            ############################################################
+
+            # https://regex101.com/r/XJjOGd/1
+            $regex = '(?<version>(?<major>\d+)(?:.(?<minor>\d+))(?:.(?<patch>\d+))?(?:.(?<build>\d+))?)(?:-(?<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$';
+
+            if ("$(MainProject.Version)" -match $regex) {
+                $version = $matches['version'];
+                $major = $matches['major'];
+                $minor = $matches['minor'];
+                $patch = if ($matches['patch']) { $matches['patch'] } else { 0 }
+                $build = $matches['build'];
+                $prerelease = $matches['prerelease'];
+
+                if ($prerelease) {
+                  # The version already has its own sufix.
+                  $prereleaseClean = -join ("$prerelease" -split '[^a-zA-Z0-9-]');
+                  $releaseVersion = "$(MainProject.Version)-$($prereleaseClean)+$(Build.BuildId)";
+                  $dockerVersion = "$version-$($prereleaseClean)";
+                  if ("$prerelease" -match '^(?<alias>\w+)') {
+                    $dockerAlias = $matches['alias'];
+                  }
+                  else {
+                    $dockerAlias = $prereleaseClean;
+                    write-warning "Invalid alias '$prerelease'.";
+                  }
+                }
+                elseif ("$(Build.SourceBranch)" -in @('refs/heads/master', 'refs/heads/main')) {
+                  # Master or main has tag "latest".
+                  $releaseVersion = "$(MainProject.Version)";
+                  $dockerVersion = $releaseVersion;
+                  $dockerAlias = "latest";
+                }
+                elseif ("$(Build.SourceBranch)" -eq 'refs/heads/staging') {
+                  # Staging has tag "alpha".
+                  $prereleaseClean = 'alpha';
+                  $releaseVersion = "$(MainProject.Version)-$($prereleaseClean).$(Build.BuildId)";
+                  $dockerVersion = "$(MainProject.Version)-$($prereleaseClean).$(Build.BuildId)";
+                  $dockerAlias = "$prereleaseClean";
+                }
+                else {
+                  # Other branches have the branch name as tag.
+                  $branchNameClean = -join ("$(Build.SourceBranchName)" -split '[^a-zA-Z0-9]');
+                  $releaseVersion = "$(MainProject.Version)-$($branchNameClean).$(Build.BuildId)";
+                  $dockerVersion = "$(MainProject.Version)-$($branchNameClean).$(Build.BuildId)";
+                  $dockerAlias = "$branchNameClean";
+                }
+                # Calculate AssemblyVersion
+                $releaseAssemblyVersion = "$major.$minor.$patch.$(Build.BuildId)";
+                # Set variables
+                write-output "##vso[task.setvariable variable=BuildParameters.ReleaseVersion]$releaseVersion";
+                write-output "##vso[task.setvariable variable=BuildParameters.ReleaseAssemblyVersion]$releaseAssemblyVersion";
+                write-output "##vso[task.setvariable variable=BuildParameters.DockerVersion]$dockerVersion";
+                write-output "##vso[task.setvariable variable=BuildParameters.DockerAlias]$dockerAlias";
+                write-output "##vso[build.addbuildtag]$dockerVersion";
+                write-output "##vso[build.addbuildtag]$dockerAlias";
+                # Display variables
+                write-output "Release version: $releaseVersion"
+                write-output "Release assembly version: $releaseAssemblyVersion"
+                write-output "Docker version: $dockerVersion"
+                write-output "Docker alias: $dockerAlias"
+            }
+            else {
+              write-error "Invalid version format for: $(MainProject.Version)";
+            }
+          workingDirectory: '$(Build.SourcesDirectory)'
+        displayName: 'Calculate release version'
+        condition: succeeded()
+
+      - task: PowerShell@2
+        inputs:
+          pwsh: true
+          targetType: 'inline'
+          script: |
+            $solutionPath = "$(BuildParameters.Solution)";
+            $versionOriginal = "$(MainProject.Version)";
+            $version = "$(BuildParameters.ReleaseVersion)";
+            $assemblyVersion = "$(BuildParameters.ReleaseAssemblyVersion)";
+            $versionForce = "$(ForceVersion)"
+
+            if ($version) {
+              $solution = (Get-Item $solutionPath);
+              $solutionContent = (Get-Content $solution);
+              $pattern = '(?m)Project\(.*\)\s?=\s?"(?<ProjectName>.*)",\s?"(?<ProjectPath>.*)",\s?.*"';
+              $projects = $solutionContent | Select-String $pattern -AllMatches;
+      
+              foreach ($project in $projects.Matches) {
+                $projectPath = $project.Groups['ProjectPath'].Value;
+                $projectFile = Join-Path $solution.Directory $projectPath;
+                $file = (Get-Item $projectFile);
+                $xml = [Xml] (Get-Content $file.FullName);
+                $xmlVersion = $xml.Project.PropertyGroup.Version;
+                $xmlAssemblyVersion = $xml.Project.PropertyGroup.AssemblyVersion;
+                
+                if (($true -eq $versionForce) -or ($xmlVersion -eq $versionOriginal)) {
+                  Write-Output "Processing file: $($file.FullName)"
+                  if ($xmlVersion) {
+                    $xml.Project.PropertyGroup.Version = $version;
+                    Write-Output "Update to version: $version";
+                  }
+                  if ($xmlAssemblyVersion) {
+                    $xml.Project.PropertyGroup.AssemblyVersion = $assemblyVersion;
+                    Write-Output "Update to assembly version: $assemblyVersion";
+                  }
+                  $xml.Save($file.FullName); 
+                  Write-Output '';
+                }
+              }
+            }
+            else {
+              Write-Warning "No version.";
+            }
+          workingDirectory: '$(Build.SourcesDirectory)'
+        displayName: 'Apply release version to all projects'
+        condition: succeeded()
      
       - task: PowerShell@2
-        displayName: 'Export variable list'
         inputs:
           targetType: 'inline'
           script: |
@@ -134,57 +333,39 @@ jobs:
             $out = ""
             Foreach ($v in $var) {$out = $out + "`t{0,-28} = {1,-28}`n" -f $v.Name, $v.Value}
           
-            $fileName = Join-Path "$env:BUILD_ARTIFACTSTAGINGDIRECTORY" "drop/variable-list.md"
+            $fileName = Join-Path "$env:BUILD_ARTIFACTSTAGINGDIRECTORY" "drop/variable-list-$env:SYSTEM_PHASENAME.md"
             write-output "dump variables on $fileName"
             set-content $fileName $out
       
-            write-output "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Environment Variables;]$fileName" 
-     
-#      - task: FileTransform@2
-#        inputs:
-#          folderPath: '$(System.DefaultWorkingDirectory)'
-#          jsonTargetFiles: '**/appsettings.json'
-#          xmlTransformationRules: '' # disabled
+            write-output "##vso[task.addattachment type=Distributedtask.Core.Summary;name=Environment Variables ($env:SYSTEM_JOBDISPLAYNAME);]$fileName"
+        displayName: 'Export variable list'
+        condition: succeededOrFailed()
 
-#      - task: UseDotNet@2
-#        inputs:
-#          packageType: 'sdk'
-#          version: '6.0.x'
-#          includePreviewVersions: false
-#        displayName: 'UseDotNet 6.0'
-#
-#      - task: UseDotNet@2
-#        inputs:
-#          packageType: 'sdk'
-#          version: '5.0.x'
-#          includePreviewVersions: false
-#        displayName: 'UseDotNet 5.0'
-#      
-#      - task: UseDotNet@2
-#        inputs:
-#          packageType: 'runtime'
-#          version: '3.1.x'
-#          includePreviewVersions: false
-#        displayName: 'UseDotNet 3.1'
+      - ${{ each framework in split(variables.SupportedFrameworks, ';') }}:
+        - task: UseDotNet@2
+          inputs:
+            packageType: 'sdk'
+            version: '${{ framework }}.x'
+            includePreviewVersions: false
+          displayName: 'UseDotNet ${{ framework }}'
+          condition: and(succeeded(), ne(variables['BuildParameters.TargetFramework_${{framework}}'], ''))
 
       - task: DotNetCoreCLI@2
         displayName: Restore
         inputs:
           command: 'restore'
-          projects: '**/*.??proj'
+          projects: '$(BuildParameters.Solution)'
      
       - ${{ if ne(parameters.Analyze, 'disabled') }} :
-        - task: SonarCloudPrepare@1
+        - task: SonarCloudPrepare@3
           inputs:
             SonarCloud: 'SonarCloud'
             organization: 'hfrances-github'
-            scannerMode: 'MSBuild'
+            scannerMode: 'dotnet'
             projectKey: '$(BuildParameters.ProjectKey)'
             projectName: '$(BuildParameters.ProjectName)'
             projectVersion: '$(MainProject.Version)'
             extraProperties: |
-              # Additional properties that will be passed to the scanner, 
-              # Put one key=value per line, example:
               sonar.exclusions=**/obj/**,**/*.dll
               sonar.cs.opencover.reportsPaths=**/*.opencover.xml
               sonar.cs.cobertura.reportsPaths=**/*.cobertura.xml
@@ -192,20 +373,20 @@ jobs:
               sonar.cs.dotcover.reportsPaths=**/*.html
               sonar.cs.vstest.reportsPaths=$(Agent.TempDirectory)/*.trx
           condition: eq(variables.SonarQubeEnabled, 'true')
-
+     
       - task: DotNetCoreCLI@2
         displayName: Build
         inputs:
           projects: '$(BuildParameters.RestoreBuildProjects)'
           arguments: '--configuration $(BuildConfiguration)'
-
+     
       - task: DotNetCoreCLI@2
         displayName: 'Test + Coverage'
         inputs:
           command: test
           projects: '$(BuildParameters.TestProjects)'
           arguments: '--configuration $(BuildConfiguration) /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[*Tests]*" /p:CoverletOutput="$(Build.SourcesDirectory)/TestResults/"'
-
+     
       - task: PowerShell@2
         inputs:
           targetType: 'inline'
@@ -223,7 +404,7 @@ jobs:
         continueOnError: true
         condition: eq(variables.HasTests, 'true')
         displayName: 'Coverage: Parse format'
-
+     
       - task: PowerShell@2
         inputs:
           targetType: 'inline'
@@ -251,7 +432,7 @@ jobs:
         condition: eq(variables.HasTests, 'true')
         displayName: 'Coverage: Collect files'
      
-      - task: PublishCodeCoverageResults@1
+      - task: PublishCodeCoverageResults@2
         inputs:
           codeCoverageTool: 'Cobertura'
           summaryFileLocation: '$(CoverageResults)'
@@ -260,9 +441,9 @@ jobs:
         displayName: 'Coverage: Publish report'
      
       - ${{ if ne(parameters.Analyze, 'disabled') }} :
-        - task: SonarCloudAnalyze@1
+        - task: SonarCloudAnalyze@3
           condition: eq(variables.SonarQubeEnabled, 'true')
-        - task: SonarCloudPublish@1
+        - task: SonarCloudPublish@3
           inputs:
             pollingTimeoutSec: '300'
           condition: eq(variables.SonarQubeEnabled, 'true')
@@ -273,7 +454,8 @@ jobs:
           packagesToPack: '**/*.??proj;!examples/**/*.??proj;!**/*.Test.??proj;!**/*.Test.*.??proj'
           packDirectory: '$(Build.ArtifactStagingDirectory)/build'
           nobuild: true
-          versioningScheme: 'off'
+          versioningScheme: 'off' #byEnvVar
+          versionEnvVar: '$(BuildParameters.ReleaseVersion)'
         displayName: 'NuGet: Pack'
 
       - task: PublishBuildArtifacts@1
@@ -287,7 +469,7 @@ jobs:
         inputs:
           targetPath: '$(Build.ArtifactStagingDirectory)/build'
           artifact: 'build'
-    
+     
       - task: NuGetCommand@2
         inputs:
           command: 'push'
@@ -295,6 +477,7 @@ jobs:
           nuGetFeedType: 'external'
           publishFeedCredentials: 'nuget.org'
         displayName: 'NuGet: Push'
+        continueOnError: false
         condition: eq(variables.PublishEnabled, 'true')
 
 ################################################################################################
@@ -305,4 +488,6 @@ jobs:
 #                Add condition for 'Nuget: Push'
 # Version 2.2.0: Add 'UseDotNet 6.0'
 # Version 2.2.1: Fix 'Nuget pack'
+# Version 3.0.0: Implement dynamic framework support
+#                Include version calculation.
 ################################################################################################
