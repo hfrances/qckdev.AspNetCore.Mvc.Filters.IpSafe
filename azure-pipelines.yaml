@@ -31,7 +31,7 @@ parameters:
     default: auto
   - name: ForceVersion
     type: boolean
-    default: false # Indica si debe reemplazar la versión siempre o si debe hacerlo solamente cuando coincide con el proyecto principal.
+    default: false # Indica si debe reemplazar la versiï¿½n siempre o si debe hacerlo solamente cuando coincide con el proyecto principal.
 
 variables:
   - name: BuildParameters.RestoreBuildProjects
@@ -58,7 +58,7 @@ variables:
     - name: SonarQubeEnabled
       value: $[or(eq(variables.Analyze, 'true'), and(eq(variables.Analyze, 'auto'), in(variables['Build.SourceBranch'], 'refs/heads/master', 'refs/heads/main', 'refs/heads/staging', 'refs/heads/alpha')))]
   - name: SupportedFrameworks
-    value: "8.0;7.0;6.0;5.0;3.1"
+    value: "10.0;9.0;8.0;7.0;6.0;5.0;3.1"
   - name: ForceVersion
     value: ${{ parameters.ForceVersion }}
 
@@ -190,8 +190,8 @@ jobs:
           targetType: 'inline'
           script: |
             ############################################################
-            # Establecer la versión release:
-            # Si la versión contiene un <prerelease>:
+            # Establecer la versiï¿½n release:
+            # Si la versiï¿½n contiene un <prerelease>:
             # - releaseVersion: <version>-<prerelease>+<build>
             # - dockerVersion: <version>-<prerelease>
             # - dockerAlias: <prerelease>
@@ -207,7 +207,7 @@ jobs:
             # - releaseVersion: <version>-<rama>.<build>
             # - dockerVersion: <version>-<rama>.<build>
             # - dockerAlias: alpha
-            # NOTA: <prerelease> podría contener o no puntos. Ejemplos:
+            # NOTA: <prerelease> podrï¿½a contener o no puntos. Ejemplos:
             # - 1.0.0-beta
             # - 1.0.0-beta.1
             ############################################################
