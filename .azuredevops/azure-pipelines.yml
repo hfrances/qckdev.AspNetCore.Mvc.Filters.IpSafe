@@ -1,0 +1,52 @@
+trigger:
+  - master
+  - main
+  - staging
+  - alpha
+  - azure-pipelines
+  - feature/net10
+
+parameters:
+  - name: Deploy
+    type: string
+    values:
+      - auto
+      - true
+      - false
+    default: auto
+  - name: Analyze
+    type: string
+    values:
+      - disabled
+      - auto
+      - true
+      - false
+    default: auto
+
+pool:
+  vmImage: 'ubuntu-22.04' #'ubuntu-latest' or 'windows-2019'
+
+resources:
+  repositories:
+    - repository: azure-pipelines-repo
+      type: github
+      name: hfrances/azure-devops-pipelines
+      ref: ${{
+        iif(in(variables['Build.SourceBranchName'], 'master', 'staging', 'development', 'azure-pipelines', 'experimental'), 
+          variables['Build.SourceBranch'], 
+          iif(eq(variables['Build.SourceBranchName'], 'main'), 
+            'master', 
+            'azure-pipelines'
+          )
+        )}}
+      endpoint: github-hfrances
+
+extends:
+  template: standard/azure-pipelines-template-libnet.yml@azure-pipelines-repo
+  parameters:
+    Deploy: ${{ parameters.Deploy }}
+    Analyze: ${{ parameters.Analyze }}
+    #Test: disabled
+    Solution: '*.Build.sln'
+    ForceVersion: true
+    SupportsNuget: true

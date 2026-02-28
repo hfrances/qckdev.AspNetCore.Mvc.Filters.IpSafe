@@ -1,17 +1,20 @@
-﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Reflection;
+#if NET10_0_OR_GREATER
+using PlatformIPNetwork = System.Net.IPNetwork;
+#else
+using PlatformIPNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
+#endif
 
-namespace Microsoft.Extensions.DependencyInjection
+namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 {
-
     /// <summary>
     /// Extension methods to enhance security by validating incoming requests based on IP addresses.
     /// </summary>
@@ -57,32 +60,35 @@ namespace Microsoft.Extensions.DependencyInjection
             SetKnownNetworksAndProxies(opt, builder, logger);
             options?.Invoke(opt);
             builder.UseForwardedHeaders(opt);
-            logger.LogInformation($"KnownNetworks: ({opt.KnownNetworks.Count}) {string.Join("; ", opt.KnownNetworks.Select(x => $"{x.Prefix}/{x.PrefixLength}"))}".TrimEnd());
+            var knownNetworks = GetKnownNetworks(opt).ToArray();
+            logger.LogInformation($"KnownNetworks: ({knownNetworks.Length}) {string.Join("; ", knownNetworks.Select(x => $"{GetNetworkAddress(x)}/{x.PrefixLength}"))}".TrimEnd());
             logger.LogInformation($"KnownProxies: ({opt.KnownProxies.Count}) {string.Join("; ", opt.KnownProxies.Select(x => x.ToString()))}".TrimEnd());
             return builder;
         }
 
         static void SetKnownNetworksAndProxies(ForwardedHeadersOptions opt, IApplicationBuilder builder, ILogger logger)
         {
-            
+
             try
             {
                 IpSafeListSettings settings = builder.ApplicationServices.GetRequiredService<IOptions<IpSafeListSettings>>().Value;
                 IpSafeProperties properties = IpSafeHelper.GetIpSafeProperties(settings);
-                var ipNetworks = new HashSet<IPNetwork>(opt.KnownNetworks, new IpNetworkComparer());
+                var ipNetworks = new HashSet<PlatformIPNetwork>(GetKnownNetworks(opt), new IpNetworkComparer());
 
                 foreach (var network in properties.IpNetworks ?? Array.Empty<IPNetwork2>())
                 {
-                    ipNetworks.Add(new IPNetwork(network.Network, network.Cidr));
+                    ipNetworks.Add(new PlatformIPNetwork(network.Network, network.Cidr));
                 }
                 foreach (var address in properties.IpAddresses ?? Array.Empty<IPAddress>())
                 {
-                    ipNetworks.Add(IpSafeHelper.GetNetworkForIP(address));
+                    var networkFromHelper = IpSafeHelper.GetNetworkForIP(address);
+                    ipNetworks.Add(new PlatformIPNetwork(address, networkFromHelper.PrefixLength));
                 }
-                opt.KnownNetworks.Clear();
+
+                ClearKnownNetworks(opt);
                 foreach (var network in ipNetworks)
                 {
-                    opt.KnownNetworks.Add(network);
+                    AddKnownNetwork(opt, network);
                 }
 
                 if (settings.KnownProxies == null)
@@ -102,6 +108,18 @@ namespace Microsoft.Extensions.DependencyInjection
                 logger.LogError(ex, ex.Message);
             }
         }
+
+#if NET10_0_OR_GREATER
+        private static IPAddress GetNetworkAddress(PlatformIPNetwork network) => network.BaseAddress;
+        private static IEnumerable<PlatformIPNetwork> GetKnownNetworks(ForwardedHeadersOptions options) => options.KnownIPNetworks;
+        private static void ClearKnownNetworks(ForwardedHeadersOptions options) => options.KnownIPNetworks.Clear();
+        private static void AddKnownNetwork(ForwardedHeadersOptions options, PlatformIPNetwork network) => options.KnownIPNetworks.Add(network);
+#else
+        private static IPAddress GetNetworkAddress(PlatformIPNetwork network) => network.Prefix;
+        private static IEnumerable<PlatformIPNetwork> GetKnownNetworks(ForwardedHeadersOptions options) => options.KnownNetworks;
+        private static void ClearKnownNetworks(ForwardedHeadersOptions options) => options.KnownNetworks.Clear();
+        private static void AddKnownNetwork(ForwardedHeadersOptions options, PlatformIPNetwork network) => options.KnownNetworks.Add(network);
+#endif
 
     }
 }
