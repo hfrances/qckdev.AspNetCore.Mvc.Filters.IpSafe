@@ -5,6 +5,7 @@ trigger:
   - alpha
   - azure-pipelines
   - feature/net10
+  - feature/net10-*
 
 parameters:
   - name: Deploy

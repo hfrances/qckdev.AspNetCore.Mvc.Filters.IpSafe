@@ -13,7 +13,8 @@ Provides a solution to grant/deny access to some IP ranges.
   
   "IpSafeList": {
     "IpAddresses": "127.0.0.1;::1",
-    "IpNetworks": "192.168.1.0/24;2001:0db8::1/64;110.40.88.12/28"
+    "IpNetworks": "192.168.1.0/24;2001:0db8::1/64;110.40.88.12/28",
+    "KnownProxies": "proxy.example.com" // SAFE - only trusts specific proxies
   }
 }
 ```
@@ -39,13 +40,8 @@ public void ConfigureServices(IServiceCollection services)
 public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
 {
   (...)
+  app.UseIpSafeFilter();
   app.UseRouting();
-  app.UseIpSafeFilter(options =>
-  {
-    // SAFE - only trusts specific proxies
-    options.KnownProxies.Clear();
-    options.KnownProxies.Add(IPAddress.Parse("proxy.example.com"));
-  });
   (...)
 }
 ```
