@@ -42,8 +42,9 @@ public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
   app.UseRouting();
   app.UseIpSafeFilter(options =>
   {
-    options.KnownNetworks.Clear();
+    // SAFE - only trusts specific proxies
     options.KnownProxies.Clear();
+    options.KnownProxies.Add(IPAddress.Parse("proxy.example.com"));
   });
   (...)
 }
@@ -94,3 +95,14 @@ real_ip_recursive on;
 | Class A |   10.0.0.0/8   |     10.0.0.0    |  10.255.255.255 |
 | Class B |  172.16.0.0/12 |    172.16.0.0   |  172.31.255.255 |
 | Class C | 192.168.0.0/16 |   192.168.0.0   | 192.168.255.255 |
+
+## Testing
+
+This library includes comprehensive integration tests covering IP filtering, forwarded headers, and attribute overrides.
+
+**3 integration tests** validate IP-based access control:
+- Loopback address handling
+- X-Forwarded-For header validation
+- Per-endpoint `[AllowAnyIpAddress]` override
+
+For detailed testing documentation, see [Integration Testing Guide](docs/TESTING.md).
