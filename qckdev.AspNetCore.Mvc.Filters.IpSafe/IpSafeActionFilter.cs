@@ -2,10 +2,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System;
 using System.Linq;
 using System.Net;
+using System.Threading.Tasks;
 #if NET8_0_OR_GREATER
 using IPNetwork = System.Net.IPNetwork;
 #else
@@ -20,12 +20,12 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
     /// </remarks>
     sealed class IpSafeActionFilter : IActionFilter
     {
-        IOptions<IpSafeListSettings> IpSafeListSettings { get; }
+        IIpSafeSettingsProvider SettingsProvider { get; }
         ILogger Logger { get; }
 
-        public IpSafeActionFilter(IOptions<IpSafeListSettings> ipSafeListSettings, ILogger<IpSafeActionFilter> logger)
+        public IpSafeActionFilter(IIpSafeSettingsProvider settingsProvider, ILogger<IpSafeActionFilter> logger)
         {
-            this.IpSafeListSettings = ipSafeListSettings;
+            this.SettingsProvider = settingsProvider;
             this.Logger = logger;
         }
 
@@ -36,7 +36,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 
         public void OnActionExecuting(ActionExecutingContext context)
         {
-            Validate(context);
+            ValidateAsync(context).GetAwaiter().GetResult();
         }
 
         public void OnActionExecuted(ActionExecutedContext _)
@@ -44,9 +44,10 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             // Do Nothing.
         }
 
-        private void Validate(ActionExecutingContext context)
+        private async Task ValidateAsync(ActionExecutingContext context)
         {
-            var properties = IpSafeHelper.GetIpSafeProperties(IpSafeListSettings.Value);
+            var settings = await SettingsProvider.GetSettingsAsync(context.HttpContext.RequestAborted);
+            var properties = IpSafeHelper.GetIpSafeProperties(settings);
             var remoteIp = IpSafeHelper.GetRemoteIpToIpv4(context.HttpContext);
             var allowAny = context.Filters.OfType<AllowAnyIpAddressAttribute>().Any();
             var endpoint = context.HttpContext.Request.Path;

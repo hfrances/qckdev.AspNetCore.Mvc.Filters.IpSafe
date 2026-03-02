@@ -22,11 +22,54 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
     {
 
         /// <summary>
-        /// Add IP address validation for incoming requests.
+        /// Add IP address validation using a custom settings provider.
         /// </summary>
-        /// <param name="services">The <see cref="IServiceCollection"/> for adding services.</param>
-        /// <param name="settings"></param>
-        /// <returns></returns>
+        /// <typeparam name="TProvider">The type of the IP Safe settings provider.</typeparam>
+        /// <param name="services">The service collection.</param>
+        /// <returns>The service collection for chaining.</returns>
+        public static IServiceCollection AddIpSafeFilter<TProvider>(this IServiceCollection services)
+            where TProvider : class, IIpSafeSettingsProvider
+        {
+            services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            });
+
+            services.AddScoped<IIpSafeSettingsProvider, TProvider>();
+            return services;
+        }
+
+        /// <summary>
+        /// Add IP address validation with custom settings provider and IpSafeListSettings configuration.
+        /// </summary>
+        /// <typeparam name="TProvider">The type of the IP Safe settings provider.</typeparam>
+        /// <param name="services">The service collection.</param>
+        /// <param name="configureSettings">A delegate that allows configuring IpSafeListSettings.</param>
+        /// <returns>The service collection for chaining.</returns>
+        public static IServiceCollection AddIpSafeFilter<TProvider>(
+            this IServiceCollection services,
+            Action<IpSafeListSettings>? configureSettings = null)
+            where TProvider : class, IIpSafeSettingsProvider
+        {
+            services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            });
+
+            if (configureSettings != null)
+            {
+                services.Configure<IpSafeListSettings>(configureSettings);
+            }
+
+            services.AddScoped<IIpSafeSettingsProvider, TProvider>();
+            return services;
+        }
+
+        /// <summary>
+        /// Add IP address validation using default settings provider from IpSafeListSettings instance.
+        /// [OBSOLETE] Use AddIpSafeFilter&lt;IpSafeSettingsProvider&gt;(Action&lt;IpSafeListSettings&gt;) for inline configuration instead.
+        /// </summary>
+        [Obsolete("Use AddIpSafeFilter<IpSafeSettingsProvider>(opts => { ... }) for inline configuration instead.", false)]
         public static IServiceCollection AddIpSafeFilter(this IServiceCollection services, IpSafeListSettings settings)
         {
             services.Configure<ForwardedHeadersOptions>(options =>
@@ -40,38 +83,54 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
                 config.IpNetworks = settings?.IpNetworks;
                 config.KnownProxies = settings?.KnownProxies;
             });
+            
+            services.AddScoped<IIpSafeSettingsProvider, IpSafeSettingsProvider>();
             return services;
         }
 
         /// <summary>
-        /// Add IP address validation for incoming requests.
+        /// Add IP address validation for incoming requests using the configured settings provider.
         /// </summary>
-        /// <param name="builder"></param>
-        /// <param name="options"></param>
-        /// <remarks>https://stackoverflow.com/questions/36352215/asp-net-core-how-to-get-remote-ip-address</remarks>
-        public static IApplicationBuilder UseIpSafeFilter(this IApplicationBuilder builder, Action<ForwardedHeadersOptions>? options = null)
+        /// <param name="builder">The application builder.</param>
+        /// <param name="options">Optional delegate to configure ForwardedHeadersOptions.</param>
+        /// <remarks>
+        /// This method retrieves settings from the registered IIpSafeSettingsProvider.
+        /// Settings are resolved at startup time.
+        /// https://stackoverflow.com/questions/36352215/asp-net-core-how-to-get-remote-ip-address
+        /// </remarks>
+        public static IApplicationBuilder UseIpSafeFilter(
+            this IApplicationBuilder builder, 
+            Action<ForwardedHeadersOptions>? options = null)
         {
             ILogger logger = builder.ApplicationServices.GetRequiredService<ILogger<IpSafeListSettings>>();
+            var settingsProvider = builder.ApplicationServices.GetRequiredService<IIpSafeSettingsProvider>();
+            
             var opt = new ForwardedHeadersOptions
             {
                 ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
             };
 
-            SetKnownNetworksAndProxies(opt, builder, logger);
+            // Retrieve settings from provider at startup
+            var settings = settingsProvider.GetSettingsAsync().GetAwaiter().GetResult();
+            SetKnownNetworksAndProxies(opt, settings, logger);
+            
             options?.Invoke(opt);
             builder.UseForwardedHeaders(opt);
+            
             var knownNetworks = GetKnownNetworks(opt).ToArray();
             logger.LogInformation($"KnownNetworks: ({knownNetworks.Length}) {string.Join("; ", knownNetworks.Select(x => $"{GetNetworkAddress(x)}/{x.PrefixLength}"))}".TrimEnd());
             logger.LogInformation($"KnownProxies: ({opt.KnownProxies.Count}) {string.Join("; ", opt.KnownProxies.Select(x => x.ToString()))}".TrimEnd());
+            
             return builder;
         }
 
-        static void SetKnownNetworksAndProxies(ForwardedHeadersOptions opt, IApplicationBuilder builder, ILogger logger)
+        static void SetKnownNetworksAndProxies(
+            ForwardedHeadersOptions opt, 
+            IpSafeListSettings? settings, 
+            ILogger logger)
         {
-
             try
             {
-                IpSafeListSettings settings = builder.ApplicationServices.GetRequiredService<IOptions<IpSafeListSettings>>().Value;
                 IpSafeProperties properties = IpSafeHelper.GetIpSafeProperties(settings);
                 var ipNetworks = new HashSet<PlatformIPNetwork>(GetKnownNetworks(opt), new IpNetworkComparer());
 
@@ -91,7 +150,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
                     AddKnownNetwork(opt, network);
                 }
 
-                if (settings.KnownProxies == null)
+                if (settings?.KnownProxies == null)
                 {
                     opt.KnownProxies.Clear();
                 }
@@ -107,6 +166,35 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             {
                 logger.LogError(ex, ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Add IP address validation using static settings (legacy overload).
+        /// [OBSOLETE] Use UseIpSafeFilter() without parameters after AddIpSafeFilter&lt;T&gt;() instead.
+        /// </summary>
+        [Obsolete("Use UseIpSafeFilter() without options parameter. " +
+                  "Register a custom IIpSafeSettingsProvider using AddIpSafeFilter<T>().", false)]
+        public static IApplicationBuilder UseIpSafeFilter(
+            this IApplicationBuilder builder, 
+            Action<ForwardedHeadersOptions>? options,
+            IpSafeListSettings settings)
+        {
+            ILogger logger = builder.ApplicationServices.GetRequiredService<ILogger<IpSafeListSettings>>();
+            
+            var opt = new ForwardedHeadersOptions
+            {
+                ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+            };
+
+            SetKnownNetworksAndProxies(opt, settings, logger);
+            options?.Invoke(opt);
+            builder.UseForwardedHeaders(opt);
+            
+            var knownNetworks = GetKnownNetworks(opt).ToArray();
+            logger.LogInformation($"KnownNetworks: ({knownNetworks.Length}) {string.Join("; ", knownNetworks.Select(x => $"{GetNetworkAddress(x)}/{x.PrefixLength}"))}".TrimEnd());
+            logger.LogInformation($"KnownProxies: ({opt.KnownProxies.Count}) {string.Join("; ", opt.KnownProxies.Select(x => x.ToString()))}".TrimEnd());
+            
+            return builder;
         }
 
 #if NET10_0_OR_GREATER

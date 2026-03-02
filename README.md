@@ -5,12 +5,13 @@
 
 # qckdev.AspNetCore.Mvc.Filters.IpSafe
 
-Provides a solution to grant/deny access to some IP ranges.
+Provides a solution to grant/deny access to some IP ranges with extensible configuration strategies.
+
+## Quick Start
 
 ```json
 {
-  (...)
-  
+  (...),
   "IpSafeList": {
     "IpAddresses": "127.0.0.1;::1",
     "IpNetworks": "192.168.1.0/24;2001:0db8::1/64;110.40.88.12/28",
@@ -29,11 +30,8 @@ using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 
 public void ConfigureServices(IServiceCollection services)
 {
-  var ipSafeListSettings = Configuration.GetSection("IpSafeList").Get<IpSafeListSettings>();
-
-  (...)
-  services.AddIpSafeFilter(ipSafeListSettings);
-  (...)
+  services.AddIpSafeFilter<IpSafeSettingsProvider>();
+  services.Configure<IpSafeListSettings>(Configuration.GetSection("IpSafeList"));
   services.AddControllers();
 }
 
@@ -46,29 +44,45 @@ public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
 }
 ```
 
-```cs
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using qckdev.AspNetCore.Mvc.Filters.IpSafe;
-using System;
-using System.Collections.Generic;
-using System.Linq;
+## Custom Settings Provider
 
-[ApiController]
-[Route("[controller]")]
+Implement `IIpSafeSettingsProvider` for custom configuration sources:
+
+```cs
+public class DatabaseIpSafeSettingsProvider : IIpSafeSettingsProvider
+{
+  private readonly IIpSecurityRepository _repository;
+  
+  public async Task<IpSafeListSettings?> GetSettingsAsync(CancellationToken cancellationToken)
+  {
+    var config = await _repository.GetCurrentConfigAsync(cancellationToken);
+    return config != null ? new IpSafeListSettings 
+    { 
+      IpAddresses = config.IpAddresses,
+      IpNetworks = config.IpNetworks,
+      KnownProxies = config.KnownProxies
+    } : null;
+  }
+}
+
+services.AddIpSafeFilter<DatabaseIpSafeSettingsProvider>();
+```
+
+## Usage
+
+```cs
+[ApiController, Route("[controller]")]
 public class WeatherForecastController : ControllerBase
 {
-  (...)
-
   [HttpGet, IpSafeFilter]
-  public IEnumerable<WeatherForecast> Get()
-  {
-    (...)
-  }
+  public IEnumerable<WeatherForecast> Get() => (...);
+  
+  [HttpGet("public"), AllowAnyIpAddress]
+  public IEnumerable<WeatherForecast> GetPublic() => (...);
 }
 ```
 
-Nginx configuration
+## Nginx Configuration
 
 ```nginx
 proxy_set_header Host $host;

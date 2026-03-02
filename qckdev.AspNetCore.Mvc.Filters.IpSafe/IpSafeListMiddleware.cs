@@ -1,6 +1,5 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System;
 using System.Linq;
 using System.Net;
@@ -13,19 +12,20 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Middlewares
     {
 
         RequestDelegate Next { get; }
-        IOptions<IpSafeListSettings> IpSafeListSettings { get; }
+        IIpSafeSettingsProvider SettingsProvider { get; }
         ILogger Logger { get; }
 
-        public IpSafeListMiddleware(RequestDelegate next, IOptions<IpSafeListSettings> ipSafeListSettings, Logger<IpSafeListMiddleware> logger)
+        public IpSafeListMiddleware(RequestDelegate next, IIpSafeSettingsProvider settingsProvider, ILogger<IpSafeListMiddleware> logger)
         {
             this.Next = next;
-            this.IpSafeListSettings = ipSafeListSettings;
+            this.SettingsProvider = settingsProvider;
             this.Logger = logger;
         }
 
         public async Task Invoke(HttpContext context)
         {
-            var properties = IpSafeHelper.GetIpSafeProperties(IpSafeListSettings.Value);
+            var settings = await SettingsProvider.GetSettingsAsync(context.RequestAborted);
+            var properties = IpSafeHelper.GetIpSafeProperties(settings);
             var remoteIp = IpSafeHelper.GetRemoteIpToIpv4(context);
             var endpoint = context.Request.Path;
 
