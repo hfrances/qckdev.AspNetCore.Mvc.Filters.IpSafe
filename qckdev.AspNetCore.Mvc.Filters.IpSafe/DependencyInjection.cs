@@ -7,7 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-#if NET10_0_OR_GREATER
+#if NET10a_0_OR_GREATER
 using PlatformIPNetwork = System.Net.IPNetwork;
 #else
 using PlatformIPNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
@@ -197,9 +197,9 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             return builder;
         }
 
-#if NET10_0_OR_GREATER
+#if NET10a_0_OR_GREATER
         private static IPAddress GetNetworkAddress(PlatformIPNetwork network) => network.BaseAddress;
-        private static IEnumerable<PlatformIPNetwork> GetKnownNetworks(ForwardedHeadersOptions options) => options.KnownIPNetworks;
+        private static IEnumerable<PlatformIPNetwork> GetKnownNetworks(ForwardedHeadersOptions options) => options.KnownNetworks;
         private static void ClearKnownNetworks(ForwardedHeadersOptions options) => options.KnownIPNetworks.Clear();
         private static void AddKnownNetwork(ForwardedHeadersOptions options, PlatformIPNetwork network) => options.KnownIPNetworks.Add(network);
 #else

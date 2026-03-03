@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 using System;
 using System.Diagnostics;
 using System.Net;

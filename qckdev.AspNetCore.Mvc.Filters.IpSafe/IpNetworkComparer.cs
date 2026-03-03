@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-#if NET10_0_OR_GREATER
+#if NET10a_0_OR_GREATER
 using PlatformIPNetwork = System.Net.IPNetwork;
 #else
 using PlatformIPNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
@@ -10,7 +10,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 {
     sealed class IpNetworkComparer : IEqualityComparer<PlatformIPNetwork>
     {
-#if NET10_0_OR_GREATER
+#if NET10a_0_OR_GREATER
         public bool Equals(PlatformIPNetwork x, PlatformIPNetwork y)
         {
             return x.BaseAddress.Equals(y.BaseAddress) && x.PrefixLength.Equals(y.PrefixLength);

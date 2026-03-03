@@ -4,7 +4,7 @@ using System;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-#if NET8_0_OR_GREATER
+#if NET10a_0_OR_GREATER
 using IPNetwork = System.Net.IPNetwork;
 #else
 using IPNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
