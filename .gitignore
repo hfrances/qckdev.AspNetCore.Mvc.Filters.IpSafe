@@ -4,7 +4,6 @@ project.lock.json
 .DS_Store
 *.pyc
 nupkg/
-appsettings.*.json
 
 # Visual Studio Code
 .vscode
@@ -36,3 +35,6 @@ msbuild.wrn
 
 # Visual Studio 2015
 .vs/
+
+# Others
+appsettings.*.json
