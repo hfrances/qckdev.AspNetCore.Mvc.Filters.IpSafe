@@ -26,6 +26,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
         /// <summary>
         /// Gets the IP Safe settings from IOptions.
         /// </summary>
+        /// <param name="cancellationToken">Cancellation token.</param>
         public Task<IpSafeListSettings?> GetSettingsAsync(CancellationToken cancellationToken = default)
         {
             return Task.FromResult<IpSafeListSettings?>(_optionsMonitor.CurrentValue);
