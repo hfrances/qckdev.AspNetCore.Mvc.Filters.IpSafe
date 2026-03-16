@@ -7,7 +7,13 @@
 
 Provides a solution to grant/deny access to some IP ranges with extensible configuration strategies.
 
-## Quick Start
+## 🛠️ Installation
+
+```bash
+dotnet add package qckdev.AspNetCore.Mvc.Filters.IpSafe
+```
+
+## ⚡ Quick Start
 
 ```json
 {
