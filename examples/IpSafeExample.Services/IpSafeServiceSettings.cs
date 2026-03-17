@@ -4,7 +4,7 @@ namespace IpSafeExample.Services
     {
         public string? IpAddresses { get; set; }
         public string? IpNetworks { get; set; }
-        public string? KnownProxies { get; set; }
+        public string? TrustedKnownProxies { get; set; }
         public string? TrustedKnownNetworks { get; set; }
     }
 }

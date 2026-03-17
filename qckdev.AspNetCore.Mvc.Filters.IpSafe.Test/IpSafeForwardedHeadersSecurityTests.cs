@@ -3,10 +3,12 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -55,7 +57,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
         [TestMethod]
         public void TrustedProxyProvider_XForwardedForIsApplied_ReturnsOk()
         {
-            using var host = BuildHostWithTrustedProxiesProvider<LoopbackTrustedProxiesProvider>();
+            using var host = BuildHostWithBuilderUsingProxyService<LoopbackTrustedProxiesProvider>();
             var statusCode = ExecuteProtectedRequestWithForwardedFor(host, "203.0.113.10");
 
             Assert.AreEqual(HttpStatusCode.OK, statusCode);
@@ -68,10 +70,49 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
         [TestMethod]
         public void UntrustedProxyProvider_XForwardedForIsIgnored_ReturnsForbidden()
         {
-            using var host = BuildHostWithTrustedProxiesProvider<UntrustedProxyProvider>();
+            using var host = BuildHostWithBuilderUsingProxyService<UntrustedProxyProvider>();
             var statusCode = ExecuteProtectedRequestWithForwardedFor(host, "203.0.113.10");
 
             Assert.AreEqual(HttpStatusCode.Forbidden, statusCode);
+        }
+
+        /// <summary>
+        /// Ensures that fluent UseIpSafeFilter builder can load trusted proxies from a provider.
+        /// Expected result: request is allowed when provider trusts loopback proxy.
+        /// </summary>
+        [TestMethod]
+        public void BuilderWithProxyService_XForwardedForIsApplied_ReturnsOk()
+        {
+            using var host = BuildHostWithBuilderUsingProxyService<LoopbackTrustedProxiesProvider>();
+            var statusCode = ExecuteProtectedRequestWithForwardedFor(host, "203.0.113.10");
+
+            Assert.AreEqual(HttpStatusCode.OK, statusCode);
+        }
+
+        /// <summary>
+        /// Ensures that fluent UseIpSafeFilter builder can set known proxies manually.
+        /// Expected result: request is allowed when loopback proxy is added via builder.
+        /// </summary>
+        [TestMethod]
+        public void BuilderWithKnownProxies_XForwardedForIsApplied_ReturnsOk()
+        {
+            using var host = BuildHostWithBuilderKnownProxies("127.0.0.1");
+            var statusCode = ExecuteProtectedRequestWithForwardedFor(host, "203.0.113.10");
+
+            Assert.AreEqual(HttpStatusCode.OK, statusCode);
+        }
+
+        /// <summary>
+        /// Ensures that fluent UseIpSafeFilter builder can bind trusted proxies/networks from IConfiguration.
+        /// Expected result: request is allowed when configuration contains loopback in KnownProxies.
+        /// </summary>
+        [TestMethod]
+        public void BuilderWithConfigurationBinding_XForwardedForIsApplied_ReturnsOk()
+        {
+            using var host = BuildHostWithBuilderConfigurationBinding();
+            var statusCode = ExecuteProtectedRequestWithForwardedFor(host, "203.0.113.10");
+
+            Assert.AreEqual(HttpStatusCode.OK, statusCode);
         }
 
         static HttpStatusCode ExecuteProtectedRequestWithForwardedFor(bool trustLoopbackProxy, string forwardedForIp)
@@ -150,7 +191,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                 .Build();
         }
 
-        static IHost BuildHostWithTrustedProxiesProvider<TTrustedProxiesProvider>()
+        static IHost BuildHostWithBuilderUsingProxyService<TTrustedProxiesProvider>()
             where TTrustedProxiesProvider : class, IIpSafeTrustedProxiesProvider
         {
             return Host.CreateDefaultBuilder()
@@ -171,10 +212,76 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                     webBuilder.Configure(app =>
                     {
                         app.UseRouting();
-                        app.UseIpSafeFilter<TTrustedProxiesProvider>(options =>
+                        app.UseIpSafeFilter(cfg =>
                         {
-                            options.ForwardLimit = 1;
-                            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                            cfg.WithProxyService<TTrustedProxiesProvider>();
+                        });
+                        app.UseEndpoints(endpoints => endpoints.MapControllers());
+                    });
+                })
+                .Build();
+        }
+
+        static IHost BuildHostWithBuilderKnownProxies(params string[] knownProxies)
+        {
+            return Host.CreateDefaultBuilder()
+                .ConfigureWebHostDefaults(webBuilder =>
+                {
+                    webBuilder.UseUrls("http://127.0.0.1:0");
+                    webBuilder.ConfigureServices(services =>
+                    {
+                        services.AddControllers().AddApplicationPart(typeof(IpSafeTestController).Assembly);
+                        services.AddIpSafeFilter<IpSafeSettingsProvider>();
+                        services.Configure<IpSafeListSettings>(options =>
+                        {
+                            options.IpAddresses = "203.0.113.10";
+                            options.KnownProxies = string.Empty;
+                        });
+                    });
+                    webBuilder.Configure(app =>
+                    {
+                        app.UseRouting();
+                        app.UseIpSafeFilter(cfg =>
+                        {
+                            cfg.WithKnownProxies(knownProxies);
+                        });
+                        app.UseEndpoints(endpoints => endpoints.MapControllers());
+                    });
+                })
+                .Build();
+        }
+
+        static IHost BuildHostWithBuilderConfigurationBinding()
+        {
+            return Host.CreateDefaultBuilder()
+                .ConfigureAppConfiguration((_, configBuilder) =>
+                {
+                    configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["IpSafeList:TrustedForwardedHeaders:KnownProxies"] = "127.0.0.1",
+                        ["IpSafeList:TrustedForwardedHeaders:KnownNetworks"] = string.Empty
+                    });
+                })
+                .ConfigureWebHostDefaults(webBuilder =>
+                {
+                    webBuilder.UseUrls("http://127.0.0.1:0");
+                    webBuilder.ConfigureServices(services =>
+                    {
+                        services.AddControllers().AddApplicationPart(typeof(IpSafeTestController).Assembly);
+                        services.AddIpSafeFilter<IpSafeSettingsProvider>();
+                        services.Configure<IpSafeListSettings>(options =>
+                        {
+                            options.IpAddresses = "203.0.113.10";
+                            options.KnownProxies = string.Empty;
+                        });
+                    });
+                    webBuilder.Configure((context, app) =>
+                    {
+                        app.UseRouting();
+                        app.UseIpSafeFilter(cfg =>
+                        {
+                            cfg.WithConfiguration<IpSafeTrustedProxiesSettings>(context.Configuration, (config, target) =>
+                                config.GetSection("IpSafeList:TrustedForwardedHeaders").Bind(target));
                         });
                         app.UseEndpoints(endpoints => endpoints.MapControllers());
                     });

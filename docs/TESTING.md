@@ -279,6 +279,12 @@ services.AddIpSafeFilter(new IpSafeListSettings
 
 ### Trusting Forwarded Headers
 
+By default, `UseIpSafeFilter()` configures:
+- `ForwardedHeaders = XForwardedFor | XForwardedProto`
+- `ForwardLimit = 1`
+
+Override these defaults only when your proxy topology requires it.
+
 ⚠️ **Only trust X-Forwarded-For when proxy is in KnownProxies**
 
 If you trust any proxy:

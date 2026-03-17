@@ -1,0 +1,41 @@
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: examples/IpSafeExample.DockerProxy/Dockerfile
+    container_name: ipsafe-api
+    ports:
+      - "8081:8080"
+    networks:
+      ipsafe_net:
+        ipv4_address: 172.28.0.20
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ipsafe-nginx
+    depends_on:
+      - api
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      ipsafe_net:
+        ipv4_address: 172.28.0.10
+
+  attacker:
+    image: curlimages/curl:8.12.1
+    container_name: ipsafe-attacker
+    command: ["sh", "-c", "sleep infinity"]
+    depends_on:
+      - api
+    networks:
+      ipsafe_net:
+        ipv4_address: 172.28.0.30
+
+networks:
+  ipsafe_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

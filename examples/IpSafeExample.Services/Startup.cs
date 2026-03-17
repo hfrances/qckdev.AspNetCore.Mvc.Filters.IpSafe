@@ -35,7 +35,10 @@ namespace IpSafeExample.Services
             }
 
             app.UseHttpsRedirection();
-            app.UseIpSafeFilter<ServiceTrustedProxiesProvider>();
+            app.UseIpSafeFilter(cfg =>
+            {
+                cfg.WithProxyService<ServiceTrustedProxiesProvider>();
+            });
             app.UseRouting();
 
             app.UseAuthorization();

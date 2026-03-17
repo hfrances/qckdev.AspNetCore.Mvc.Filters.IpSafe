@@ -19,8 +19,7 @@ namespace IpSafeExample.Services
             return new IpSafeListSettings
             {
                 IpAddresses = settings.IpAddresses,
-                IpNetworks = settings.IpNetworks,
-                KnownProxies = settings.KnownProxies
+                IpNetworks = settings.IpNetworks
             };
         }
     }

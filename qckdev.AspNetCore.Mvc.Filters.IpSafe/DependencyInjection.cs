@@ -19,6 +19,9 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
     /// </summary>
     public static class QIpSafeDependencyInjection
     {
+        const ForwardedHeaders DefaultForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        const int DefaultForwardLimit = 1;
+
         /// <summary>
         /// Adds a named IpSafe settings scheme.
         /// This is additive and does not replace existing default IpSafe settings.
@@ -80,13 +83,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
         public static IServiceCollection AddIpSafeFilter<TProvider>(this IServiceCollection services)
             where TProvider : class, IIpSafeSettingsProvider
         {
-            services.Configure<ForwardedHeadersOptions>(options =>
-            {
-                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-            });
-
-            services.AddScoped<IIpSafeSettingsProvider, TProvider>();
-            return services;
+            return AddIpSafeFilterCore<TProvider>(services, null);
         }
 
         /// <summary>
@@ -101,18 +98,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             Action<IpSafeListSettings>? configureSettings = null)
             where TProvider : class, IIpSafeSettingsProvider
         {
-            services.Configure<ForwardedHeadersOptions>(options =>
-            {
-                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-            });
-
-            if (configureSettings != null)
-            {
-                services.Configure<IpSafeListSettings>(configureSettings);
-            }
-
-            services.AddScoped<IIpSafeSettingsProvider, TProvider>();
-            return services;
+            return AddIpSafeFilterCore<TProvider>(services, configureSettings);
         }
 
         /// <summary>
@@ -122,20 +108,12 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
         [Obsolete("Use AddIpSafeFilter<IpSafeSettingsProvider>(opts => { ... }) for inline configuration instead.", false)]
         public static IServiceCollection AddIpSafeFilter(this IServiceCollection services, IpSafeListSettings settings)
         {
-            services.Configure<ForwardedHeadersOptions>(options =>
-            {
-                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-            });
-
-            services.Configure<IpSafeListSettings>(config =>
+            return AddIpSafeFilterCore<IpSafeSettingsProvider>(services, config =>
             {
                 config.IpAddresses = settings?.IpAddresses;
                 config.IpNetworks = settings?.IpNetworks;
                 config.KnownProxies = settings?.KnownProxies;
             });
-
-            services.AddScoped<IIpSafeSettingsProvider, IpSafeSettingsProvider>();
-            return services;
         }
 
         /// <summary>
@@ -152,7 +130,27 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             this IApplicationBuilder builder,
             Action<ForwardedHeadersOptions>? options = null)
         {
-            return ConfigureUseIpSafeFilter(builder, options, null);
+            return ConfigureUseIpSafeFilter(builder, options, null, null);
+        }
+
+        /// <summary>
+        /// Add IP address validation and configure trusted proxies/networks using a fluent builder.
+        /// </summary>
+        /// <param name="builder">The application builder.</param>
+        /// <param name="configure">Configuration callback.</param>
+        /// <returns>The application builder.</returns>
+        public static IApplicationBuilder UseIpSafeFilter(
+            this IApplicationBuilder builder,
+            Action<IpSafeForwardedHeadersBuilder> configure)
+        {
+            if (configure == null)
+            {
+                throw new ArgumentNullException(nameof(configure));
+            }
+
+            var cfg = new IpSafeForwardedHeadersBuilder();
+            configure(cfg);
+            return ConfigureUseIpSafeFilter(builder, null, null, cfg);
         }
 
         /// <summary>
@@ -173,29 +171,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             return ConfigureUseIpSafeFilter(builder, opt =>
             {
                 CopyForwardedHeadersOptions(forwardedHeadersOptions, opt);
-            }, null);
-        }
-
-        /// <summary>
-        /// Add IP address validation and load trusted proxies/networks from a dedicated provider.
-        /// </summary>
-        /// <typeparam name="TTrustedProxiesProvider">The trusted proxies provider type.</typeparam>
-        /// <param name="builder">The application builder.</param>
-        /// <param name="options">Optional delegate to configure ForwardedHeadersOptions.</param>
-        /// <returns>The application builder.</returns>
-        public static IApplicationBuilder UseIpSafeFilter<TTrustedProxiesProvider>(
-            this IApplicationBuilder builder,
-            Action<ForwardedHeadersOptions>? options = null)
-            where TTrustedProxiesProvider : class, IIpSafeTrustedProxiesProvider
-        {
-            return ConfigureUseIpSafeFilter(
-                builder,
-                options,
-                scope =>
-                {
-                    var provider = scope.ServiceProvider.GetRequiredService<TTrustedProxiesProvider>();
-                    return provider.GetSettingsAsync().GetAwaiter().GetResult();
-                });
+            }, null, null);
         }
 
         /// <summary>
@@ -229,27 +205,22 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
         static IApplicationBuilder ConfigureUseIpSafeFilter(
             IApplicationBuilder builder,
             Action<ForwardedHeadersOptions>? options,
-            Func<IServiceScope, IpSafeTrustedProxiesSettings?>? trustedProxiesResolver)
+            Func<IServiceScope, IpSafeTrustedProxiesSettings?>? trustedProxiesResolver,
+            IpSafeForwardedHeadersBuilder? forwardedHeadersBuilder)
         {
             ILogger logger = builder.ApplicationServices.GetRequiredService<ILogger<IpSafeListSettings>>();
             using var scope = builder.ApplicationServices.CreateScope();
             var settingsProvider = scope.ServiceProvider.GetRequiredService<IIpSafeSettingsProvider>();
 
-            var opt = new ForwardedHeadersOptions
-            {
-                ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-            };
+            var opt = CreateDefaultForwardedHeadersOptions();
 
             // Retrieve settings from provider at startup.
             var settings = settingsProvider.GetSettingsAsync().GetAwaiter().GetResult();
             SetKnownNetworksAndProxies(opt, settings, logger);
             ConfigureForwardedHeadersFromSettings(opt, settings);
 
-            if (trustedProxiesResolver != null)
-            {
-                var trustedProxiesSettings = trustedProxiesResolver(scope);
-                SetTrustedProxies(opt, trustedProxiesSettings, logger);
-            }
+            ApplyTrustedProxiesFromResolver(opt, logger, scope, trustedProxiesResolver);
+            ApplyTrustedProxiesFromBuilder(opt, logger, scope, forwardedHeadersBuilder);
 
             options?.Invoke(opt);
             LogForwardedHeadersSafetyWarnings(logger, opt);
@@ -264,44 +235,57 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             IpSafeListSettings? settings,
             ILogger logger)
         {
-            try
+            var properties = TryGetIpSafeProperties(settings, logger);
+            if (properties == null)
             {
-                IpSafeProperties properties = IpSafeHelper.GetIpSafeProperties(settings);
-                var ipNetworks = new HashSet<PlatformIPNetwork>(GetKnownNetworks(opt), new IpNetworkComparer());
-
-                foreach (var network in properties.IpNetworks ?? Array.Empty<IPNetwork2>())
-                {
-                    ipNetworks.Add(new PlatformIPNetwork(network.Network, network.Cidr));
-                }
-                foreach (var address in properties.IpAddresses ?? Array.Empty<IPAddress>())
-                {
-                    var networkFromHelper = IpSafeHelper.GetNetworkForIP(address);
-                    ipNetworks.Add(new PlatformIPNetwork(address, networkFromHelper.PrefixLength));
-                }
-
-                ClearKnownNetworks(opt);
-                foreach (var network in ipNetworks)
-                {
-                    AddKnownNetwork(opt, network);
-                }
-
-                if (settings?.KnownProxies == null)
-                {
-                    opt.KnownProxies.Clear();
-                }
-                else
-                {
-                    opt.KnownProxies.Clear();
-                    foreach (var address in properties.KnownProxies)
-                    {
-                        opt.KnownProxies.Add(address);
-                    }
-                }
+                return;
             }
-            catch (Exception ex)
+
+            var ipNetworks = new HashSet<PlatformIPNetwork>(GetKnownNetworks(opt), new IpNetworkComparer());
+            foreach (var network in properties.IpNetworks ?? Array.Empty<IPNetwork2>())
             {
-                logger.LogError(ex, ex.Message);
+                ipNetworks.Add(new PlatformIPNetwork(network.Network, network.Cidr));
             }
+            foreach (var address in properties.IpAddresses ?? Array.Empty<IPAddress>())
+            {
+                var networkFromHelper = IpSafeHelper.GetNetworkForIP(address);
+                ipNetworks.Add(new PlatformIPNetwork(address, networkFromHelper.PrefixLength));
+            }
+
+            ClearKnownNetworks(opt);
+            foreach (var network in ipNetworks)
+            {
+                AddKnownNetwork(opt, network);
+            }
+
+            opt.KnownProxies.Clear();
+            if (settings?.KnownProxies == null)
+            {
+                return;
+            }
+
+            foreach (var address in properties.KnownProxies)
+            {
+                opt.KnownProxies.Add(address);
+            }
+        }
+
+        static IpSafeTrustedProxiesSettings? ResolveTrustedProxiesFromBuilder(
+            IServiceScope scope,
+            IpSafeForwardedHeadersBuilder builder)
+        {
+            if (builder.TrustedProxiesProviderType == null)
+            {
+                return null;
+            }
+
+            var provider = scope.ServiceProvider.GetRequiredService(builder.TrustedProxiesProviderType) as IIpSafeTrustedProxiesProvider;
+            if (provider == null)
+            {
+                return null;
+            }
+
+            return provider.GetSettingsAsync().GetAwaiter().GetResult();
         }
 
         static void SetTrustedProxies(
@@ -314,33 +298,22 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
                 return;
             }
 
-            try
+            var properties = TryGetIpSafeProperties(new IpSafeListSettings
             {
-                var source = new IpSafeListSettings
-                {
-                    IpAddresses = null,
-                    IpNetworks = settings.KnownNetworks,
-                    KnownProxies = settings.KnownProxies
-                };
+                IpAddresses = null,
+                IpNetworks = settings.KnownNetworks,
+                KnownProxies = settings.KnownProxies
+            }, logger);
 
-                var properties = IpSafeHelper.GetIpSafeProperties(source);
-
-                ClearKnownNetworks(opt);
-                foreach (var network in properties.IpNetworks ?? Array.Empty<IPNetwork2>())
-                {
-                    AddKnownNetwork(opt, new PlatformIPNetwork(network.Network, network.Cidr));
-                }
-
-                opt.KnownProxies.Clear();
-                foreach (var proxy in properties.KnownProxies ?? Array.Empty<IPAddress>())
-                {
-                    opt.KnownProxies.Add(proxy);
-                }
-            }
-            catch (Exception ex)
+            if (properties == null)
             {
-                logger.LogError(ex, ex.Message);
+                return;
             }
+
+            ApplyTrustedNetworksAndProxies(
+                opt,
+                properties.IpNetworks ?? Array.Empty<IPNetwork2>(),
+                properties.KnownProxies ?? Array.Empty<IPAddress>());
         }
 
         static void ConfigureForwardedHeadersFromSettings(
@@ -367,6 +340,121 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             foreach (var network in GetKnownNetworks(source))
             {
                 AddKnownNetwork(target, network);
+            }
+        }
+
+        static IServiceCollection AddIpSafeFilterCore<TProvider>(
+            IServiceCollection services,
+            Action<IpSafeListSettings>? configureSettings)
+            where TProvider : class, IIpSafeSettingsProvider
+        {
+            ConfigureDefaultForwardedHeaders(services);
+
+            if (configureSettings != null)
+            {
+                services.Configure<IpSafeListSettings>(configureSettings);
+            }
+
+            services.AddScoped<IIpSafeSettingsProvider, TProvider>();
+            return services;
+        }
+
+        static void ConfigureDefaultForwardedHeaders(IServiceCollection services)
+        {
+            services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders = DefaultForwardedHeaders;
+                options.ForwardLimit = DefaultForwardLimit;
+            });
+        }
+
+        static ForwardedHeadersOptions CreateDefaultForwardedHeadersOptions()
+        {
+            return new ForwardedHeadersOptions
+            {
+                ForwardedHeaders = DefaultForwardedHeaders,
+                ForwardLimit = DefaultForwardLimit
+            };
+        }
+
+        static void ApplyTrustedProxiesFromResolver(
+            ForwardedHeadersOptions opt,
+            ILogger logger,
+            IServiceScope scope,
+            Func<IServiceScope, IpSafeTrustedProxiesSettings?>? trustedProxiesResolver)
+        {
+            if (trustedProxiesResolver == null)
+            {
+                return;
+            }
+
+            SetTrustedProxies(opt, trustedProxiesResolver(scope), logger);
+        }
+
+        static void ApplyTrustedProxiesFromBuilder(
+            ForwardedHeadersOptions opt,
+            ILogger logger,
+            IServiceScope scope,
+            IpSafeForwardedHeadersBuilder? builder)
+        {
+            if (builder == null)
+            {
+                return;
+            }
+
+            var trustedSettingsFromBuilder = ResolveTrustedProxiesFromBuilder(scope, builder);
+            SetTrustedProxies(opt, trustedSettingsFromBuilder, logger);
+
+            if ((builder.KnownProxies != null && builder.KnownProxies.Count > 0) ||
+                (builder.KnownNetworks != null && builder.KnownNetworks.Count > 0))
+            {
+                var manualSettings = new IpSafeTrustedProxiesSettings
+                {
+                    KnownProxies = builder.KnownProxies == null || builder.KnownProxies.Count == 0
+                        ? string.Empty
+                        : string.Join(";", builder.KnownProxies),
+                    KnownNetworks = builder.KnownNetworks == null || builder.KnownNetworks.Count == 0
+                        ? string.Empty
+                        : string.Join(";", builder.KnownNetworks)
+                };
+
+                SetTrustedProxies(opt, manualSettings, logger);
+            }
+
+            foreach (var configureForwardedHeaders in builder.ForwardedHeadersConfigurations)
+            {
+                configureForwardedHeaders(opt);
+            }
+        }
+
+        static void ApplyTrustedNetworksAndProxies(
+            ForwardedHeadersOptions opt,
+            IEnumerable<IPNetwork2> knownNetworks,
+            IEnumerable<IPAddress> knownProxies)
+        {
+            ClearKnownNetworks(opt);
+            foreach (var network in knownNetworks)
+            {
+                AddKnownNetwork(opt, new PlatformIPNetwork(network.Network, network.Cidr));
+            }
+
+            opt.KnownProxies.Clear();
+            foreach (var proxy in knownProxies)
+            {
+                opt.KnownProxies.Add(proxy);
+            }
+        }
+
+        static IpSafeProperties? TryGetIpSafeProperties(IpSafeListSettings? settings, ILogger logger)
+        {
+            try
+            {
+                return IpSafeHelper.GetIpSafeProperties(settings);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, ex.Message);
+                return null;
             }
         }
 
