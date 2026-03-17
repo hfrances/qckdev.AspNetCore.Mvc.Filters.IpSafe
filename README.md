@@ -7,6 +7,11 @@
 
 Provides a solution to grant/deny access to some IP ranges with extensible configuration strategies.
 
+## 📦 Packages
+
+- `qckdev.AspNetCore.Mvc.Filters.IpSafe`: IP filtering attributes, settings providers, and middleware integration.
+- `qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger`: Swagger/OpenAPI integration for visual IP-safe endpoint markers.
+
 ## 🛠️ Installation
 
 ```bash

@@ -1,0 +1,31 @@
+.swagger-ui .opblock-summary-control {
+    position: relative;
+}
+
+.swagger-ui .ip-safe-indicator {
+    display: inline-flex;
+    align-items: flex-start;
+    justify-content: center;
+    margin: 0 -8px 0 6px;
+    padding-top: 1px;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    background: transparent;
+    align-self: center;
+}
+
+.swagger-ui .ip-safe-indicator .ip-safe-icon {
+    width: 25px;
+    height: 25px;
+    fill: none;
+    stroke: #8a8a8a;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.swagger-ui .ip-safe-indicator .ip-safe-icon circle {
+    fill: #8a8a8a;
+    stroke: #8a8a8a;
+}
