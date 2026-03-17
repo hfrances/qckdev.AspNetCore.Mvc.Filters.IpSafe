@@ -20,6 +20,57 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
     /// </summary>
     public static class QIpSafeDependencyInjection
     {
+        /// <summary>
+        /// Adds a named IpSafe settings scheme.
+        /// This is additive and does not replace existing default IpSafe settings.
+        /// </summary>
+        /// <param name="services">The service collection.</param>
+        /// <param name="scheme">The scheme name.</param>
+        /// <param name="configureSettings">A delegate that allows configuring IpSafeListSettings.</param>
+        /// <returns>The service collection for chaining.</returns>
+        public static IServiceCollection AddIpSafeScheme(
+            this IServiceCollection services,
+            string scheme,
+            Action<IpSafeListSettings> configureSettings)
+        {
+            if (string.IsNullOrWhiteSpace(scheme))
+            {
+                throw new ArgumentException("Scheme name cannot be null or empty.", nameof(scheme));
+            }
+            if (configureSettings == null)
+            {
+                throw new ArgumentNullException(nameof(configureSettings));
+            }
+
+            services.Configure(scheme, configureSettings);
+            return services;
+        }
+
+        /// <summary>
+        /// Adds a named IpSafe settings scheme from a static settings instance.
+        /// This is additive and does not replace existing default IpSafe settings.
+        /// </summary>
+        /// <param name="services">The service collection.</param>
+        /// <param name="scheme">The scheme name.</param>
+        /// <param name="settings">The static settings for the scheme.</param>
+        /// <returns>The service collection for chaining.</returns>
+        public static IServiceCollection AddIpSafeScheme(
+            this IServiceCollection services,
+            string scheme,
+            IpSafeListSettings settings)
+        {
+            if (settings == null)
+            {
+                throw new ArgumentNullException(nameof(settings));
+            }
+
+            return AddIpSafeScheme(services, scheme, config =>
+            {
+                config.IpAddresses = settings.IpAddresses;
+                config.IpNetworks = settings.IpNetworks;
+                config.KnownProxies = settings.KnownProxies;
+            });
+        }
 
         /// <summary>
         /// Add IP address validation using a custom settings provider.

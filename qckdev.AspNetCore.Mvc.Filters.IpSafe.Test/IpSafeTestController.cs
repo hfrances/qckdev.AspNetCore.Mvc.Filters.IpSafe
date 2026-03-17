@@ -27,6 +27,20 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
         {
             return Ok("endpoint-both-ok");
         }
+
+        [HttpGet("scheme-internal")]
+        [qckdev.AspNetCore.Mvc.Filters.IpSafe.IpSafeFilter("Internal")]
+        public IActionResult SchemeInternal()
+        {
+            return Ok("scheme-internal-ok");
+        }
+
+        [HttpGet("scheme-internal-or-partner")]
+        [qckdev.AspNetCore.Mvc.Filters.IpSafe.IpSafeFilter("Internal", "Partner")]
+        public IActionResult SchemeInternalOrPartner()
+        {
+            return Ok("scheme-internal-or-partner-ok");
+        }
     }
 
     [ApiController]
