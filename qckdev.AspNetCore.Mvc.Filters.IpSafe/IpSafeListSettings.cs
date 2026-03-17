@@ -5,7 +5,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
     /// <summary>
     /// Specifies the settings on for IP request validation.
     /// </summary>
-    public sealed class IpSafeListSettings
+    public class IpSafeListSettings
     {
 
         /// <summary>

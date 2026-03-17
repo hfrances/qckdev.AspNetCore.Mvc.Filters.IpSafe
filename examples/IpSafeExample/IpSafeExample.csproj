@@ -5,7 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\qckdev.AspNetCore.Mvc.Filters.IpSafe\qckdev.AspNetCore.Mvc.Filters.IpSafe.csproj" />
+    <ProjectReference Include="..\..\qckdev.AspNetCore.Mvc.Filters.IpSafe\qckdev.AspNetCore.Mvc.Filters.IpSafe.csproj" />
   </ItemGroup>
 
 </Project>
