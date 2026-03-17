@@ -1,10 +1,12 @@
-﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Threading.Tasks;
 #if NET10a_0_OR_GREATER
 using IPNetwork = System.Net.IPNetwork;
@@ -49,13 +51,13 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             var settings = await SettingsProvider.GetSettingsAsync(context.HttpContext.RequestAborted);
             var properties = IpSafeHelper.GetIpSafeProperties(settings);
             var remoteIp = IpSafeHelper.GetRemoteIpToIpv4(context.HttpContext);
-            var allowAny = context.Filters.OfType<AllowAnyIpAddressAttribute>().Any();
+            var shouldEnforceIpSafe = ShouldEnforceIpSafe(context);
             var endpoint = context.HttpContext.Request.Path;
-            
+
             Logger.LogDebug($"IP {(remoteIp?.ToString() ?? "<unknown>")} made a request to endpoint: {(endpoint.ToString() ?? "<unknown>")}");
-            if (allowAny)
+            if (!shouldEnforceIpSafe)
             {
-                // Do nothing. AllowAnyIp attribute set.
+                // Do nothing. Endpoint/controller resolved as AllowAny or not IpSafe.
             }
             else if (properties.IpAddresses.Any() || properties.IpNetworks.Any())
             {
@@ -75,5 +77,45 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             }
         }
 
+        static bool ShouldEnforceIpSafe(ActionExecutingContext context)
+        {
+            if (context.ActionDescriptor is ControllerActionDescriptor descriptor)
+            {
+                var endpointDecision = GetLocalDecision(descriptor.MethodInfo);
+                if (endpointDecision.HasValue)
+                {
+                    return endpointDecision.Value;
+                }
+
+                var controllerDecision = GetLocalDecision(descriptor.ControllerTypeInfo);
+                if (controllerDecision.HasValue)
+                {
+                    return controllerDecision.Value;
+                }
+            }
+
+            // Fallback for non-controller descriptors: preserve current behavior.
+            if (context.Filters.OfType<AllowAnyIpAddressAttribute>().Any())
+            {
+                return false;
+            }
+
+            return context.Filters.OfType<IpSafeFilterAttribute>().Any();
+        }
+
+        static bool? GetLocalDecision(MemberInfo memberInfo)
+        {
+            if (memberInfo.GetCustomAttributes(typeof(AllowAnyIpAddressAttribute), true).Any())
+            {
+                return false;
+            }
+
+            if (memberInfo.GetCustomAttributes(typeof(IpSafeFilterAttribute), true).Any())
+            {
+                return true;
+            }
+
+            return null;
+        }
     }
 }

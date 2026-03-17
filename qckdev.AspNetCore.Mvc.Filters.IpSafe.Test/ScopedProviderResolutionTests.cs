@@ -8,9 +8,16 @@ using System.Threading.Tasks;
 
 namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
 {
+    /// <summary>
+    /// Verifies service-lifetime behavior for <see cref="IIpSafeSettingsProvider"/> when the middleware is configured.
+    /// </summary>
     [TestClass]
     public class ScopedProviderResolutionTests
     {
+        /// <summary>
+        /// Ensures that app startup does not fail when the settings provider is registered as scoped.
+        /// Expected result: host can be built without throwing.
+        /// </summary>
         [TestMethod]
         public void UseIpSafeFilter_WithScopedProvider_DoesNotThrow()
         {

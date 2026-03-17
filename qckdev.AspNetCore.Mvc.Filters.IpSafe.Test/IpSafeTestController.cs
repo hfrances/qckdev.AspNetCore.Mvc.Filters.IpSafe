@@ -19,5 +19,46 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
         {
             return Ok("public-ok");
         }
+
+        [HttpGet("endpoint-both-attributes")]
+        [qckdev.AspNetCore.Mvc.Filters.IpSafe.IpSafeFilter]
+        [qckdev.AspNetCore.Mvc.Filters.IpSafe.AllowAnyIpAddress]
+        public IActionResult EndpointBothAttributes()
+        {
+            return Ok("endpoint-both-ok");
+        }
+    }
+
+    [ApiController]
+    [Route("ipsafe-allowany-controller")]
+    [qckdev.AspNetCore.Mvc.Filters.IpSafe.AllowAnyIpAddress]
+    public sealed class IpSafeAllowAnyController : ControllerBase
+    {
+        [HttpGet("protected-endpoint")]
+        [qckdev.AspNetCore.Mvc.Filters.IpSafe.IpSafeFilter]
+        public IActionResult ProtectedEndpoint()
+        {
+            return Ok("protected-endpoint-ok");
+        }
+    }
+
+    [ApiController]
+    [Route("ipsafe-both-controller")]
+    [qckdev.AspNetCore.Mvc.Filters.IpSafe.IpSafeFilter]
+    [qckdev.AspNetCore.Mvc.Filters.IpSafe.AllowAnyIpAddress]
+    public sealed class IpSafeBothAttributesController : ControllerBase
+    {
+        [HttpGet("default")]
+        public IActionResult Default()
+        {
+            return Ok("both-controller-default-ok");
+        }
+
+        [HttpGet("endpoint-ip-safe")]
+        [qckdev.AspNetCore.Mvc.Filters.IpSafe.IpSafeFilter]
+        public IActionResult EndpointIpSafe()
+        {
+            return Ok("both-controller-endpoint-ipsafe-ok");
+        }
     }
 }

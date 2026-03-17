@@ -4,9 +4,16 @@ using System.Net.Http;
 
 namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
 {
+    /// <summary>
+    /// Integration tests that validate runtime behavior of IpSafe filter resolution and forwarding scenarios.
+    /// </summary>
     [TestClass]
     public class IpSafeIntegrationTests
     {
+        /// <summary>
+        /// Verifies that loopback traffic to an IpSafe endpoint is accepted when no forwarded IP is provided.
+        /// Expected result: HTTP 200 OK.
+        /// </summary>
         [TestMethod]
         public void ProtectedEndpoint_WithoutForwardedHeader_AllowsLoopback()
         {
@@ -17,6 +24,10 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         }
 
+        /// <summary>
+        /// Verifies that a non-allowed forwarded IP is rejected on an IpSafe endpoint.
+        /// Expected result: HTTP 403 Forbidden.
+        /// </summary>
         [TestMethod]
         public void ProtectedEndpoint_WithNotAllowedForwardedFor_ReturnsForbidden()
         {
@@ -30,11 +41,83 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
             Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
         }
 
+        /// <summary>
+        /// Verifies that endpoint-level <see cref="AllowAnyIpAddressAttribute"/> bypasses controller-level IpSafe.
+        /// Expected result: HTTP 200 OK.
+        /// </summary>
         [TestMethod]
         public void PublicEndpoint_WithNotAllowedForwardedFor_AllowsByAttribute()
         {
             using var client = new HttpClient { BaseAddress = LocalTestServiceManager.ServiceUri };
             using var request = new HttpRequestMessage(HttpMethod.Get, "ipsafe/public");
+            request.Headers.Add("X-Forwarded-For", "8.8.8.8");
+            request.Headers.Add("X-Forwarded-Proto", "http");
+
+            var response = client.SendAsync(request).GetAwaiter().GetResult();
+
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        /// <summary>
+        /// Verifies endpoint precedence: endpoint-level <see cref="IpSafeFilterAttribute"/> overrides controller AllowAny.
+        /// Expected result: HTTP 403 Forbidden.
+        /// </summary>
+        [TestMethod]
+        public void EndpointWithIpSafeUnderAllowAnyController_WithNotAllowedForwardedFor_ReturnsForbidden()
+        {
+            using var client = new HttpClient { BaseAddress = LocalTestServiceManager.ServiceUri };
+            using var request = new HttpRequestMessage(HttpMethod.Get, "ipsafe-allowany-controller/protected-endpoint");
+            request.Headers.Add("X-Forwarded-For", "8.8.8.8");
+            request.Headers.Add("X-Forwarded-Proto", "http");
+
+            var response = client.SendAsync(request).GetAwaiter().GetResult();
+
+            Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+
+        /// <summary>
+        /// Verifies that when controller has both attributes and endpoint has none, AllowAny wins at controller level.
+        /// Expected result: HTTP 200 OK.
+        /// </summary>
+        [TestMethod]
+        public void DefaultEndpointUnderControllerWithBothAttributes_WithNotAllowedForwardedFor_ReturnsOk()
+        {
+            using var client = new HttpClient { BaseAddress = LocalTestServiceManager.ServiceUri };
+            using var request = new HttpRequestMessage(HttpMethod.Get, "ipsafe-both-controller/default");
+            request.Headers.Add("X-Forwarded-For", "8.8.8.8");
+            request.Headers.Add("X-Forwarded-Proto", "http");
+
+            var response = client.SendAsync(request).GetAwaiter().GetResult();
+
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        /// <summary>
+        /// Verifies endpoint precedence over controller both-state: endpoint IpSafe enforces IP restrictions.
+        /// Expected result: HTTP 403 Forbidden.
+        /// </summary>
+        [TestMethod]
+        public void EndpointIpSafeUnderControllerWithBothAttributes_WithNotAllowedForwardedFor_ReturnsForbidden()
+        {
+            using var client = new HttpClient { BaseAddress = LocalTestServiceManager.ServiceUri };
+            using var request = new HttpRequestMessage(HttpMethod.Get, "ipsafe-both-controller/endpoint-ip-safe");
+            request.Headers.Add("X-Forwarded-For", "8.8.8.8");
+            request.Headers.Add("X-Forwarded-Proto", "http");
+
+            var response = client.SendAsync(request).GetAwaiter().GetResult();
+
+            Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+
+        /// <summary>
+        /// Verifies that when endpoint declares both attributes, AllowAny wins at endpoint level.
+        /// Expected result: HTTP 200 OK.
+        /// </summary>
+        [TestMethod]
+        public void EndpointWithBothAttributes_WithNotAllowedForwardedFor_ReturnsOk()
+        {
+            using var client = new HttpClient { BaseAddress = LocalTestServiceManager.ServiceUri };
+            using var request = new HttpRequestMessage(HttpMethod.Get, "ipsafe/endpoint-both-attributes");
             request.Headers.Add("X-Forwarded-For", "8.8.8.8");
             request.Headers.Add("X-Forwarded-Proto", "http");
 

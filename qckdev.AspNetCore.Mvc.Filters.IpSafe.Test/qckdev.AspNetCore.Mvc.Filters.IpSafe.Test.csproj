@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\qckdev.AspNetCore.Mvc.Filters.IpSafe\qckdev.AspNetCore.Mvc.Filters.IpSafe.csproj" />
+    <ProjectReference Include="..\qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger\qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger.csproj" />
   </ItemGroup>
 
 </Project>

@@ -6,6 +6,7 @@ Welcome to the documentation for `qckdev.AspNetCore.Mvc.Filters.IpSafe`.
 
 - [Framework Compatibility](COMPATIBILITY.md) - Supported frameworks, package versions, and security considerations
 - [Integration Testing](TESTING.md) - Comprehensive test suite for IP Safe filter
+- [Swagger IpSafe Operation Filter](SWAGGER_IPSAFE_OPERATION_FILTER.md) - Attribute evaluation rules and detection matrix for `x-ip-safe`
 - [Test Dependencies Quick Reference](TEST_DEPENDENCIES_QUICK_REFERENCE.md) - Checklist for multi-framework test changes
 - [Test Dependencies Update](TEST_DEPENDENCIES_UPDATE.md) - Comprehensive rules for editing test projects
 - [Test Coverage Guide](../TEST_COVERAGE.md) - Patterns and coverage across all projects
@@ -33,6 +34,13 @@ Detailed guide to:
 - Forwarded headers configuration
 - Troubleshooting and best practices
 
+### [Swagger IpSafe Operation Filter](SWAGGER_IPSAFE_OPERATION_FILTER.md)
+Detailed information about:
+- `IpSafeOperationFilter` purpose and scope
+- Exact rule used to emit `x-ip-safe`
+- Full Controller/Endpoint attribute combination matrix
+- Precedence of `AllowAnyIpAddress` over `IpSafeFilter`
+
 ### [Test Dependencies - Layered Model](TEST_DEPENDENCIES_QUICK_REFERENCE.md)
 
 **Capa 1 (base):** Checklist for safe multi-framework test changes
@@ -49,4 +57,4 @@ These guides cover:
 
 ---
 
-Last updated: February 28, 2026
+Last updated: March 17, 2026

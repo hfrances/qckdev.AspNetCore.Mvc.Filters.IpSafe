@@ -19,21 +19,41 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger
             }
 
             var methodInfo = context.MethodInfo;
-            var hasIpSafe = HasAttribute<IpSafeFilterAttribute>(methodInfo)
-                || HasAttribute<IpSafeFilterAttribute>(methodInfo.DeclaringType);
-            if (!hasIpSafe)
+            var endpointDecision = GetLocalDecision(methodInfo);
+            if (endpointDecision.HasValue)
             {
+                if (endpointDecision.Value)
+                {
+                    operation.Extensions["x-ip-safe"] = new OpenApiBoolean(true);
+                }
                 return;
             }
 
-            var allowAnyIp = HasAttribute<AllowAnyIpAddressAttribute>(methodInfo)
-                || HasAttribute<AllowAnyIpAddressAttribute>(methodInfo.DeclaringType);
-            if (allowAnyIp)
+            var controllerDecision = GetLocalDecision(methodInfo.DeclaringType);
+            if (controllerDecision.HasValue && controllerDecision.Value)
             {
-                return;
+                operation.Extensions["x-ip-safe"] = new OpenApiBoolean(true);
+            }
+        }
+
+        static bool? GetLocalDecision(MemberInfo? memberInfo)
+        {
+            if (memberInfo == null)
+            {
+                return null;
             }
 
-            operation.Extensions["x-ip-safe"] = new OpenApiBoolean(true);
+            if (HasAttribute<AllowAnyIpAddressAttribute>(memberInfo))
+            {
+                return false;
+            }
+
+            if (HasAttribute<IpSafeFilterAttribute>(memberInfo))
+            {
+                return true;
+            }
+
+            return null;
         }
 
         static bool HasAttribute<TAttribute>(MemberInfo? memberInfo) where TAttribute : System.Attribute
