@@ -103,7 +103,8 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             Action<ForwardedHeadersOptions>? options = null)
         {
             ILogger logger = builder.ApplicationServices.GetRequiredService<ILogger<IpSafeListSettings>>();
-            var settingsProvider = builder.ApplicationServices.GetRequiredService<IIpSafeSettingsProvider>();
+            using var scope = builder.ApplicationServices.CreateScope();
+            var settingsProvider = scope.ServiceProvider.GetRequiredService<IIpSafeSettingsProvider>();
             
             var opt = new ForwardedHeadersOptions
             {
