@@ -75,10 +75,14 @@
             badge.setAttribute("aria-label", "IP protected endpoint");
             badge.title = "Endpoint protected by IP filter";
 
-            // Keep the IP badge next to the auth lock button (not mixed with copy icon).
-            var authButton = summaryContainer.querySelector(".authorization__btn");
-            if (authButton && authButton.parentNode === summaryContainer) {
-                summaryContainer.insertBefore(badge, authButton);
+            // Place the IP badge after copy-to-clipboard when available.
+            var copyButton = summaryContainer.querySelector(".copy-to-clipboard");
+            if (copyButton && copyButton.parentNode === summaryContainer) {
+                if (copyButton.nextSibling) {
+                    summaryContainer.insertBefore(badge, copyButton.nextSibling);
+                } else {
+                    summaryContainer.appendChild(badge);
+                }
             } else {
                 summaryControl.appendChild(badge);
             }
