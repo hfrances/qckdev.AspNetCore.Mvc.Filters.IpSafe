@@ -30,7 +30,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
         /// <param name="scheme">The scheme name.</param>
         /// <param name="configureSettings">A delegate that allows configuring IpSafeListSettings.</param>
         /// <returns>The service collection for chaining.</returns>
-        public static IServiceCollection AddIpSafeScheme(
+        public static IServiceCollection AddIpSafeFilter(
             this IServiceCollection services,
             string scheme,
             Action<IpSafeListSettings> configureSettings)
@@ -56,7 +56,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
         /// <param name="scheme">The scheme name.</param>
         /// <param name="settings">The static settings for the scheme.</param>
         /// <returns>The service collection for chaining.</returns>
-        public static IServiceCollection AddIpSafeScheme(
+        public static IServiceCollection AddIpSafeFilter(
             this IServiceCollection services,
             string scheme,
             IpSafeListSettings settings)
@@ -66,7 +66,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
                 throw new ArgumentNullException(nameof(settings));
             }
 
-            return AddIpSafeScheme(services, scheme, config =>
+            return AddIpSafeFilter(services, scheme, config =>
             {
                 config.IpAddresses = settings.IpAddresses;
                 config.IpNetworks = settings.IpNetworks;

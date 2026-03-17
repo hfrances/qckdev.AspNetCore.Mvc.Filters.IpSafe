@@ -14,11 +14,11 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
         /// Expected result: configured named scheme values are returned.
         /// </summary>
         [TestMethod]
-        public void AddIpSafeScheme_WithDefaultProvider_ResolvesNamedSettings()
+        public void AddIpSafeFilter_WithNamedSchemeAndDefaultProvider_ResolvesNamedSettings()
         {
             var services = new ServiceCollection();
             services.AddIpSafeFilter<IpSafeSettingsProvider>();
-            services.AddIpSafeScheme("Internal", options =>
+            services.AddIpSafeFilter("Internal", options =>
             {
                 options.IpAddresses = "203.0.113.10";
                 options.IpNetworks = "10.0.0.0/24";

@@ -206,13 +206,13 @@ services.AddIpSafeFilter<IpSafeSettingsProvider>();
 services.Configure<IpSafeListSettings>(Configuration.GetSection("IpSafeList"));
 
 // Named scheme: Internal
-services.AddIpSafeScheme("Internal", options =>
+services.AddIpSafeFilter("Internal", options =>
 {
   Configuration.GetSection("IpSafeSchemes:Internal").Bind(options);
 });
 
 // Named scheme: Partner
-services.AddIpSafeScheme("Partner", options =>
+services.AddIpSafeFilter("Partner", options =>
 {
   options.IpAddresses = "198.51.100.20;198.51.100.21";
   options.IpNetworks = "198.51.100.0/24";
@@ -367,7 +367,7 @@ Existing code continues working unchanged:
 - `IIpSafeSettingsProvider.GetSettingsAsync(...)`
 
 Named schemes are additive:
-- use `AddIpSafeScheme(...)`
+- use `AddIpSafeFilter("SchemeName", ...)`
 - use `[IpSafeFilter("SchemeName")]`
 
 ## Security Checklist (important)
