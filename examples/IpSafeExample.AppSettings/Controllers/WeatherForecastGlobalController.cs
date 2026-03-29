@@ -8,6 +8,9 @@ using System.Threading.Tasks;
 
 namespace IpSafeExample.AppSettings.Controllers
 {
+    /// <summary>
+    /// Demonstrates controller-level IpSafe filtering loaded from configuration.
+    /// </summary>
     [ApiController]
     [Route("[controller]"), IpSafeFilter]
     public class WeatherForecastGlobalController : ControllerBase
@@ -24,6 +27,11 @@ namespace IpSafeExample.AppSettings.Controllers
             _logger = logger;
         }
 
+        /// <summary>
+        /// Returns weather forecasts for requests allowed by controller-level IpSafe rules.
+        /// </summary>
+        /// <response code="200">Forecast list returned successfully.</response>
+        /// <response code="403">Request IP is not allowed by IpSafe.</response>
         [HttpGet]
         public IEnumerable<WeatherForecast> Get()
         {
@@ -37,6 +45,10 @@ namespace IpSafeExample.AppSettings.Controllers
             .ToArray();
         }
 
+        /// <summary>
+        /// Returns weather forecasts without IpSafe restrictions for this action.
+        /// </summary>
+        /// <response code="200">Forecast list returned successfully.</response>
         [HttpGet("public"), AllowAnyIpAddress]
         public IEnumerable<WeatherForecast> GetAnyIpAddress()
         {
@@ -52,4 +64,3 @@ namespace IpSafeExample.AppSettings.Controllers
 
     }
 }
-

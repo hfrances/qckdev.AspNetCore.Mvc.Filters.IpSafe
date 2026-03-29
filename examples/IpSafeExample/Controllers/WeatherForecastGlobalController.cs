@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 using System;
@@ -8,6 +8,9 @@ using System.Threading.Tasks;
 
 namespace IpSafeExample.Controllers
 {
+    /// <summary>
+    /// Demonstrates controller-level IpSafe filtering with a public override endpoint.
+    /// </summary>
     [ApiController]
     [Route("[controller]"), IpSafeFilter]
     public class WeatherForecastGlobalController : ControllerBase
@@ -24,6 +27,11 @@ namespace IpSafeExample.Controllers
             _logger = logger;
         }
 
+        /// <summary>
+        /// Returns weather forecasts for requests allowed by controller-level IpSafe rules.
+        /// </summary>
+        /// <response code="200">Forecast list returned successfully.</response>
+        /// <response code="403">Request IP is not allowed by IpSafe.</response>
         [HttpGet]
         public IEnumerable<WeatherForecast> Get()
         {
@@ -37,6 +45,10 @@ namespace IpSafeExample.Controllers
             .ToArray();
         }
 
+        /// <summary>
+        /// Returns weather forecasts without IpSafe restrictions for this action.
+        /// </summary>
+        /// <response code="200">Forecast list returned successfully.</response>
         [HttpGet("public"), AllowAnyIpAddress]
         public IEnumerable<WeatherForecast> GetAnyIpAddress()
         {

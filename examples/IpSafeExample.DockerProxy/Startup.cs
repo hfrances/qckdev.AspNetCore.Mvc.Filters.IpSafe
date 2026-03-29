@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using IpSafeExample.DockerProxy.Swagger;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 
 namespace IpSafeExample.DockerProxy
@@ -21,6 +22,7 @@ namespace IpSafeExample.DockerProxy
             services.AddIpSafeFilter<IpSafeSettingsProvider>();
             services.Configure<IpSafeListSettings>(Configuration.GetSection("IpSafeList"));
             services.AddControllers();
+            services.AddSwagger();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
@@ -39,6 +41,7 @@ namespace IpSafeExample.DockerProxy
             app.UseRouting();
 
             app.UseAuthorization();
+            app.UseSwagger();
 
             app.UseEndpoints(endpoints =>
             {

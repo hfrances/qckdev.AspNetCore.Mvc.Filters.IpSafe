@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
+using IpSafeExample.AppSettings.Swagger;
 
 namespace IpSafeExample.AppSettings
 {
@@ -23,6 +24,7 @@ namespace IpSafeExample.AppSettings
             services.AddIpSafeFilter<IpSafeSettingsProvider>();
             services.Configure<IpSafeListSettings>(Configuration.GetSection("IpSafeList"));
             services.AddControllers();
+            services.AddSwagger();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -42,6 +44,7 @@ namespace IpSafeExample.AppSettings
             app.UseRouting();
 
             app.UseAuthorization();
+            app.UseSwagger();
 
             app.UseEndpoints(endpoints =>
             {
