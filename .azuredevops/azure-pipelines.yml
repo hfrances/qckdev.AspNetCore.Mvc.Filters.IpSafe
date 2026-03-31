@@ -1,11 +1,19 @@
 trigger:
-  - master
-  - main
-  - staging
-  - alpha
-  - azure-pipelines
-  - feature/net10
-  - feature/net10-*
+  branches:
+    include:
+      - master
+      - main
+      - staging
+      - alpha
+      - azure-pipelines
+      - feature/net10
+      - feature/net10-*
+  paths:
+    exclude:
+      - docs/**
+      - '**/*.md'
+      - .gitignore
+      - .gitmodules
 
 parameters:
   - name: Deploy
