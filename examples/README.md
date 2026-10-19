@@ -35,40 +35,40 @@ Most examples expose these endpoints:
 
 File: `IpSafeExample/appsettings.json`
 
-- `IpSafeList:IpAddresses` and `IpSafeList:IpNetworks` define allowed clients.
-- `IpSafeList:KnownProxies` can be used for trusted proxies.
+- `Security:IpSafeList:IpAddresses` and `Security:IpSafeList:IpNetworks` define allowed clients.
+- This legacy example has no reverse proxy configured; proxy trust should be configured separately under `Security:ForwardedHeaders` in modern setups.
 
 ## 2) IpSafeExample.AppSettings (Modern, Config-Driven)
 
 ### How It Is Implemented
 
-- Uses `AddIpSafeFilter<IpSafeSettingsProvider>()`.
-- Binds allowed IP rules from `IpSafeList`.
-- Configures trusted forwarded headers using:
-  - `UseIpSafeFilter(cfg => cfg.WithConfiguration<IpSafeTrustedProxiesSettings>(...))`
+- Uses `AddIpSafeFilter<IpSafeSettingsProvider>(Configuration, "Security:IpSafeList")`.
+- Binds allowed IP rules from `Security:IpSafeList` through the registration overload.
+- Configures trusted proxies through the sibling `Security:ForwardedHeaders` section and `UseForwardedHeaders(...)`.
+- Does not call `UseIpSafeFilter(...)`, which would register a second forwarded-headers middleware.
 
 ### What It Demonstrates
 
 - Separation of concerns:
   - `AddIpSafeFilter` -> allowed client IP rules.
-  - `UseIpSafeFilter` -> trusted proxies/networks for `X-Forwarded-*`.
+  - `UseForwardedHeaders` -> trusted proxies/networks and `X-Forwarded-*` processing.
 - Clean appsettings-driven setup.
 
 ### How To Configure
 
 File: `IpSafeExample.AppSettings/appsettings.json`
 
-- `IpSafeList:IpAddresses`
-- `IpSafeList:IpNetworks`
-- `IpSafeList:TrustedForwardedHeaders:KnownProxies`
-- `IpSafeList:TrustedForwardedHeaders:KnownNetworks`
+- `Security:IpSafeList:IpAddresses`
+- `Security:IpSafeList:IpNetworks`
+- `Security:ForwardedHeaders:KnownProxies`
+- `Security:ForwardedHeaders:KnownNetworks`
 
 ## 3) IpSafeExample.Services (Modern, Service-Driven)
 
 ### How It Is Implemented
 
 - Uses `AddIpSafeFilter<ServiceIpSafeSettingsProvider>()` for allowed IP rules.
-- Uses `UseIpSafeFilter(cfg => cfg.WithProxyService<ServiceTrustedProxiesProvider>())` for trusted proxies.
+- Uses `UseIpSafeFilter(cfg => cfg.WithProxyService<ServiceTrustedProxiesProvider>())` as the sole forwarded-headers middleware owner for trusted proxies.
 - Providers read values through `IAppSecuritySettingsService`.
 
 ### What It Demonstrates
@@ -82,10 +82,10 @@ File: `IpSafeExample.AppSettings/appsettings.json`
 
 File: `IpSafeExample.Services/appsettings.json`
 
-- `IpSafeList:IpAddresses`
-- `IpSafeList:IpNetworks`
-- `IpSafeList:TrustedKnownProxies`
-- `IpSafeList:TrustedKnownNetworks`
+- `Security:IpSafeList:IpAddresses`
+- `Security:IpSafeList:IpNetworks`
+- `Security:ForwardedHeaders:KnownProxies`
+- `Security:ForwardedHeaders:KnownNetworks`
 
 Note: service-based trusted proxy values are resolved at startup. If values change later, restart the API.
 

@@ -1,3 +1,5 @@
+using qckdev.AspNetCore.ForwardedHeaders;
+
 namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 {
     /// <summary>
@@ -8,11 +10,11 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
         /// <summary>
         /// Gets or sets a list of trusted proxies split by semicolon (;).
         /// </summary>
-        public string? KnownProxies { get; set; } = string.Empty;
+        public DelimitedStringList? KnownProxies { get; set; } = new DelimitedStringList();
 
         /// <summary>
         /// Gets or sets a list of trusted networks split by semicolon (;).
         /// </summary>
-        public string? KnownNetworks { get; set; }
+        public DelimitedStringList? KnownNetworks { get; set; }
     }
 }

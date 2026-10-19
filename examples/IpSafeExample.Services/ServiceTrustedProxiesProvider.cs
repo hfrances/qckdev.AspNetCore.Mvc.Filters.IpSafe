@@ -18,8 +18,8 @@ namespace IpSafeExample.Services
             var settings = await _settingsService.GetIpSafeSettingsAsync(cancellationToken);
             return new IpSafeTrustedProxiesSettings
             {
-                KnownProxies = settings.TrustedKnownProxies,
-                KnownNetworks = settings.TrustedKnownNetworks
+                KnownProxies = settings.KnownProxies,
+                KnownNetworks = settings.KnownNetworks
             };
         }
     }

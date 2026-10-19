@@ -20,7 +20,9 @@ namespace IpSafeExample.Services
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            services.Configure<IpSafeServiceSettings>(Configuration.GetSection("IpSafeList"));
+            services.AddOptions<IpSafeServiceSettings>()
+                .Bind(Configuration.GetSection("Security:IpSafeList"))
+                .Bind(Configuration.GetSection("Security:ForwardedHeaders"));
             services.AddScoped<IAppSecuritySettingsService, AppSecuritySettingsService>();
             services.AddScoped<ServiceTrustedProxiesProvider>();
             services.AddIpSafeFilter<ServiceIpSafeSettingsProvider>();
@@ -36,11 +38,11 @@ namespace IpSafeExample.Services
                 app.UseDeveloperExceptionPage();
             }
 
-            app.UseHttpsRedirection();
             app.UseIpSafeFilter(cfg =>
             {
                 cfg.WithProxyService<ServiceTrustedProxiesProvider>();
             });
+            app.UseHttpsRedirection();
             app.UseRouting();
 
             app.UseAuthorization();

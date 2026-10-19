@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using qckdev.AspNetCore.ForwardedHeaders;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 using IpSafeExample.AppSettings.Swagger;
 
@@ -21,8 +22,7 @@ namespace IpSafeExample.AppSettings
         public void ConfigureServices(IServiceCollection services)
         {
             // Modern setup: no legacy AddIpSafeFilter(settings) overload.
-            services.AddIpSafeFilter<IpSafeSettingsProvider>();
-            services.Configure<IpSafeListSettings>(Configuration.GetSection("IpSafeList"));
+            services.AddIpSafeFilter<IpSafeSettingsProvider>(Configuration, "Security:IpSafeList");
             services.AddControllers();
             services.AddSwagger();
         }
@@ -35,12 +35,9 @@ namespace IpSafeExample.AppSettings
                 app.UseDeveloperExceptionPage();
             }
 
+            app.UseForwardedHeaders(options =>
+                options.WithConfiguration(Configuration, "Security:ForwardedHeaders"));
             app.UseHttpsRedirection();
-            app.UseIpSafeFilter(cfg =>
-            {
-                cfg.WithConfiguration<IpSafeTrustedProxiesSettings>(Configuration, (config, target) =>
-                    config.GetSection("IpSafeList:TrustedForwardedHeaders").Bind(target));
-            });
             app.UseRouting();
 
             app.UseAuthorization();

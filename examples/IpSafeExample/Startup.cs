@@ -20,9 +20,7 @@ namespace IpSafeExample
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            var ipSafeListSettings = Configuration.GetSection("IpSafeList").Get<IpSafeListSettings>();
-
-            services.AddIpSafeFilter(ipSafeListSettings);
+            services.AddIpSafeFilter<IpSafeSettingsProvider>(Configuration, "Security:IpSafeList");
             services.AddControllers();
             services.AddSwagger();
         }

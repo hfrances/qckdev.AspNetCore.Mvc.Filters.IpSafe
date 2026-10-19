@@ -13,6 +13,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
+using ForwardedHeadersType = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders;
 
 namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
 {
@@ -32,6 +33,18 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
             var statusCode = ExecuteProtectedRequestWithForwardedFor(
                 trustLoopbackProxy: false,
                 forwardedForIp: "203.0.113.10");
+
+            Assert.AreEqual(HttpStatusCode.Forbidden, statusCode);
+        }
+
+        /// <summary>
+        /// Ensures an allowed client IP does not implicitly trust other hosts in its subnet as proxies.
+        /// </summary>
+        [TestMethod]
+        public void AllowedIpAddress_DoesNotTrustItsSubnetAsProxy()
+        {
+            using var host = BuildHostWithUntrustedPeerInAllowedSubnet();
+            var statusCode = ExecuteProtectedRequestWithForwardedFor(host, "203.0.113.2");
 
             Assert.AreEqual(HttpStatusCode.Forbidden, statusCode);
         }
@@ -183,8 +196,39 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                             }
 
                             options.ForwardLimit = 1;
-                            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                            options.ForwardedHeaders = ForwardedHeadersType.XForwardedFor | ForwardedHeadersType.XForwardedProto;
                         });
+                        app.UseEndpoints(endpoints => endpoints.MapControllers());
+                    });
+                })
+                .Build();
+        }
+
+        static IHost BuildHostWithUntrustedPeerInAllowedSubnet()
+        {
+            return Host.CreateDefaultBuilder()
+                .ConfigureWebHostDefaults(webBuilder =>
+                {
+                    webBuilder.UseUrls("http://127.0.0.1:0");
+                    webBuilder.ConfigureServices(services =>
+                    {
+                        services.AddControllers().AddApplicationPart(typeof(IpSafeTestController).Assembly);
+                        services.AddIpSafeFilter<IpSafeSettingsProvider>();
+                        services.Configure<IpSafeListSettings>(options =>
+                        {
+                            options.IpAddresses = "203.0.113.2";
+                            options.KnownProxies = string.Empty;
+                        });
+                    });
+                    webBuilder.Configure(app =>
+                    {
+                        app.Use(async (context, next) =>
+                        {
+                            context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.1");
+                            await next();
+                        });
+                        app.UseRouting();
+                        app.UseIpSafeFilter();
                         app.UseEndpoints(endpoints => endpoints.MapControllers());
                     });
                 })
@@ -212,7 +256,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                     webBuilder.Configure(app =>
                     {
                         app.UseRouting();
-                        app.UseIpSafeFilter(cfg =>
+                        app.UseIpSafeFilter((IpSafeForwardedHeadersBuilder cfg) =>
                         {
                             cfg.WithProxyService<TTrustedProxiesProvider>();
                         });
@@ -258,8 +302,8 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                 {
                     configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
                     {
-                        ["IpSafeList:TrustedForwardedHeaders:KnownProxies"] = "127.0.0.1",
-                        ["IpSafeList:TrustedForwardedHeaders:KnownNetworks"] = string.Empty
+                        ["Security:ForwardedHeaders:KnownProxies"] = "127.0.0.1; 127.0.0.2",
+                        ["Security:ForwardedHeaders:KnownNetworks:0"] = "127.0.0.0/8"
                     });
                 })
                 .ConfigureWebHostDefaults(webBuilder =>
@@ -278,10 +322,10 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                     webBuilder.Configure((context, app) =>
                     {
                         app.UseRouting();
-                        app.UseIpSafeFilter(cfg =>
+                        app.UseIpSafeFilter((IpSafeForwardedHeadersBuilder cfg) =>
                         {
                             cfg.WithConfiguration<IpSafeTrustedProxiesSettings>(context.Configuration, (config, target) =>
-                                config.GetSection("IpSafeList:TrustedForwardedHeaders").Bind(target));
+                                config.GetSection("Security:ForwardedHeaders").Bind(target));
                         });
                         app.UseEndpoints(endpoints => endpoints.MapControllers());
                     });

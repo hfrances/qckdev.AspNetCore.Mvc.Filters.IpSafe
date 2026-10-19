@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
+using ForwardedHeadersType = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders;
 
 namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
 {
@@ -67,7 +68,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                                 options.KnownProxies.Add(IPAddress.Loopback);
                                 options.KnownProxies.Add(IPAddress.IPv6Loopback);
                                 options.ForwardLimit = 1;
-                                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                                options.ForwardedHeaders = ForwardedHeadersType.XForwardedFor | ForwardedHeadersType.XForwardedProto;
                             });
                             app.UseEndpoints(endpoints =>
                             {

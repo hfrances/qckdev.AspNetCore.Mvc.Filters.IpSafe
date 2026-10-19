@@ -63,16 +63,44 @@ Use them together with `IpAddresses`/`IpNetworks` (allowed clients).
 
 ## Step 1 - Basic Setup (single list)
 
-Use this first if you want a minimal working setup. If your API is not behind a reverse proxy, you can keep `KnownProxies` empty.
+Use this first if you want a minimal working setup. If your API is not behind a reverse proxy, omit `KnownProxies` and `KnownNetworks` from `Security:ForwardedHeaders`.
 
 `appsettings.json`
 
+Allowed-client lists (`IpAddresses`, `IpNetworks`) and trusted-proxy lists (`KnownProxies`, `KnownNetworks`) accept either a JSON array or a semicolon-delimited string. Keep the two concerns in sibling sections under `Security`, and use one format consistently in each example.
+
+Array form:
+
 ```json
 {
-  "IpSafeList": {
-    "IpAddresses": "127.0.0.1;::1",
-    "IpNetworks": "192.168.1.0/24;2001:db8::/64",
-    "KnownProxies": "10.0.0.10;10.0.0.11"
+  "Security": {
+    "ForwardedHeaders": {
+      "ForwardedHeaders": "XForwardedFor, XForwardedProto",
+      "ForwardLimit": 1,
+      "KnownProxies": [ "10.0.0.10" ]
+    },
+    "IpSafeList": {
+      "IpAddresses": [ "203.0.113.25" ],
+      "IpNetworks": [ "203.0.113.0/24" ]
+    }
+  }
+}
+```
+
+Semicolon-delimited string form:
+
+```json
+{
+  "Security": {
+    "ForwardedHeaders": {
+      "ForwardedHeaders": "XForwardedFor, XForwardedProto",
+      "ForwardLimit": 1,
+      "KnownProxies": "10.0.0.10"
+    },
+    "IpSafeList": {
+      "IpAddresses": "203.0.113.25",
+      "IpNetworks": "203.0.113.0/24"
+    }
   }
 }
 ```
@@ -84,18 +112,19 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using qckdev.AspNetCore.ForwardedHeaders;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 
 public void ConfigureServices(IServiceCollection services)
 {
-  services.AddIpSafeFilter<IpSafeSettingsProvider>();
-  services.Configure<IpSafeListSettings>(Configuration.GetSection("IpSafeList"));
+  services.AddIpSafeFilter<IpSafeSettingsProvider>(Configuration, "Security:IpSafeList");
   services.AddControllers();
 }
 
 public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
 {
-  app.UseIpSafeFilter();
+  app.UseForwardedHeaders(options =>
+    options.WithConfiguration(Configuration, "Security:ForwardedHeaders"));
   app.UseRouting();
   app.UseEndpoints(endpoints => endpoints.MapControllers());
 }
@@ -103,7 +132,9 @@ public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
 
 ## Step 2 - Trusted Proxies/Networks for Forwarded Headers
 
-If your API is behind reverse proxies, configure trusted proxies/networks in `UseIpSafeFilter(...)`.
+When using `qckdev.AspNetCore.ForwardedHeaders` together with IpSafe, configure trusted proxies/networks in the sibling `Security:ForwardedHeaders` section and register only `UseForwardedHeaders(...)`. Do not also call `UseIpSafeFilter(...)`, because that method registers its own forwarded-headers middleware.
+
+Use `UseIpSafeFilter(...)` for forwarded headers only when IpSafe itself is the sole middleware owner; in that setup, do not also call `UseForwardedHeaders(...)`.
 
 ### Option A - From `appsettings.json` via `WithConfiguration`
 
@@ -111,12 +142,16 @@ If your API is behind reverse proxies, configure trusted proxies/networks in `Us
 
 ```json
 {
-  "IpSafeList": {
-    "IpAddresses": "127.0.0.1;::1",
-    "IpNetworks": "192.168.1.0/24",
-    "TrustedForwardedHeaders": {
-      "KnownProxies": "127.0.0.1;::1",
-      "KnownNetworks": "10.0.0.0/8"
+  "Security": {
+    "ForwardedHeaders": {
+      "ForwardedHeaders": "XForwardedFor, XForwardedProto",
+      "ForwardLimit": 1,
+      "KnownProxies": [ "127.0.0.1", "::1" ],
+      "KnownNetworks": [ "10.0.0.0/8" ]
+    },
+    "IpSafeList": {
+      "IpAddresses": [ "127.0.0.1", "::1" ],
+      "IpNetworks": [ "192.168.1.0/24" ]
     }
   }
 }
@@ -125,16 +160,13 @@ If your API is behind reverse proxies, configure trusted proxies/networks in `Us
 `Startup.cs`
 
 ```cs
-app.UseIpSafeFilter(cfg =>
-{
-  cfg.WithConfiguration<IpSafeTrustedProxiesSettings>(Configuration, (config, target) =>
-    config.GetSection("IpSafeList:TrustedForwardedHeaders").Bind(target));
-});
+app.UseForwardedHeaders(options =>
+  options.WithConfiguration(Configuration, "Security:ForwardedHeaders"));
 ```
 
 ### Option B - From service via `WithProxyService`
 
-Use this option when trusted proxies/networks are stored in dynamic sources (database, configuration service, tenant settings, feature flags, etc.).
+Use this option when IpSafe is the sole forwarded-headers middleware owner and trusted proxies/networks come from a dynamic source (database, configuration service, tenant settings, feature flags, etc.). Do not also call `UseForwardedHeaders(...)`.
 
 Important: `WithProxyService` is resolved during application startup. If the underlying values change later, restart the API to apply the new trusted proxies/networks.
 
@@ -200,10 +232,8 @@ Use this when one API exposes endpoints for different consumers (internal, partn
 ### 4.1 Register schemes
 
 ```cs
-services.AddIpSafeFilter<IpSafeSettingsProvider>();
-
 // Default/global list (used by [IpSafeFilter] without parameters)
-services.Configure<IpSafeListSettings>(Configuration.GetSection("IpSafeList"));
+services.AddIpSafeFilter<IpSafeSettingsProvider>(Configuration, "Security:IpSafeList");
 
 // Named scheme: Internal
 services.AddIpSafeFilter("Internal", options =>
@@ -224,9 +254,11 @@ services.AddIpSafeFilter("Partner", options =>
 
 ```json
 {
-  "IpSafeList": {
-    "IpAddresses": "127.0.0.1;::1",
-    "KnownProxies": "10.0.0.10"
+  "Security": {
+    "IpSafeList": {
+      "IpAddresses": "127.0.0.1;::1",
+      "KnownProxies": "10.0.0.10"
+    }
   },
   "IpSafeSchemes": {
     "Internal": {

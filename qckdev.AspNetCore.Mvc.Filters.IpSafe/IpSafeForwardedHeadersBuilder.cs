@@ -82,8 +82,8 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             var target = new TTarget();
             bind(configuration, target);
 
-            AddNonEmptyDistinct(_knownProxies, ParseValues(target.KnownProxies));
-            AddNonEmptyDistinct(_knownNetworks, ParseValues(target.KnownNetworks));
+            AddNonEmptyDistinct(_knownProxies, target.KnownProxies);
+            AddNonEmptyDistinct(_knownNetworks, target.KnownNetworks);
             return this;
         }
 
@@ -103,9 +103,9 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             return this;
         }
 
-        static void AddNonEmptyDistinct(List<string> target, string[] values)
+        static void AddNonEmptyDistinct(List<string> target, IEnumerable<string>? values)
         {
-            if (values == null || values.Length == 0)
+            if (values == null)
             {
                 return;
             }
@@ -119,18 +119,5 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             }
         }
 
-        static string[] ParseValues(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return Array.Empty<string>();
-            }
-
-            return value
-                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(x => x.Trim())
-                .Where(x => x.Length > 0)
-                .ToArray();
-        }
     }
 }

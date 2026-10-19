@@ -125,7 +125,7 @@ dotnet test --logger "console;verbosity=detailed" --no-build
   LocalTestServiceManager.StartIfNeeded()
     ├─ Create IHostBuilder
     ├─ Configure services (AddControllers, AddIpSafeFilter)
-    ├─ Configure middleware (UseForwardedHeaders, UseIpSafeFilter)
+    ├─ Configure middleware (UseIpSafeFilter registers forwarded-header processing)
     ├─ Start host on dynamic port
     └─ Wait for service ready (polling, 10s timeout)
   ↓

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
+using qckdev.AspNetCore.ForwardedHeaders;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -125,31 +126,21 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 
             return new IpSafeListSettings
             {
-                IpAddresses = (ipAddresses.Count == 0 ? null : string.Join(";", ipAddresses)),
-                IpNetworks = (ipNetworks.Count == 0 ? null : string.Join(";", ipNetworks)),
-                KnownProxies = (knownProxies.Count == 0 ? string.Empty : string.Join(";", knownProxies)),
+                IpAddresses = (ipAddresses.Count == 0 ? null : new DelimitedStringList(ipAddresses)),
+                IpNetworks = (ipNetworks.Count == 0 ? null : new DelimitedStringList(ipNetworks)),
+                KnownProxies = new DelimitedStringList(knownProxies),
             };
         }
 
-        static void AddTokens(HashSet<string> set, string? value)
+        static void AddTokens(HashSet<string> set, IEnumerable<string>? values)
         {
-            foreach (var token in SplitTokens(value))
+            foreach (var value in values ?? Array.Empty<string>())
             {
-                set.Add(token);
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    set.Add(value.Trim());
+                }
             }
-        }
-
-        static IEnumerable<string> SplitTokens(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return Array.Empty<string>();
-            }
-
-            return value
-                .Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(x => x.Trim())
-                .Where(x => x.Length > 0);
         }
 
         static IpSafeResolution ResolveIpSafe(ActionExecutingContext context)

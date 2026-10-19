@@ -25,7 +25,7 @@ The API uses:
 app.UseIpSafeFilter(cfg =>
 {
   cfg.WithConfiguration<IpSafeTrustedProxiesSettings>(Configuration, (config, target) =>
-    config.GetSection("IpSafeList:TrustedForwardedHeaders").Bind(target));
+    config.GetSection("Security:ForwardedHeaders").Bind(target));
 });
 ```
 
@@ -48,7 +48,8 @@ curl -i http://localhost:8080/WeatherForecast
 Why it works:
 - request comes through trusted Nginx (`172.28.0.10`)
 - Nginx forwards `X-Forwarded-For: 198.51.100.10`
-- `198.51.100.10` is allowed in `IpSafeList.IpAddresses`
+- `198.51.100.10` is allowed in `Security:IpSafeList:IpAddresses`
+- `172.28.0.10` is trusted in `Security:ForwardedHeaders:KnownProxies`
 
 ### 2. Direct call to API with spoofed header (expected `403`)
 

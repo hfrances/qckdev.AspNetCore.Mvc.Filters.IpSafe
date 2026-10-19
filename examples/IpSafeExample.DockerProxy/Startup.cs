@@ -19,8 +19,7 @@ namespace IpSafeExample.DockerProxy
 
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddIpSafeFilter<IpSafeSettingsProvider>();
-            services.Configure<IpSafeListSettings>(Configuration.GetSection("IpSafeList"));
+            services.AddIpSafeFilter<IpSafeSettingsProvider>(Configuration, "Security:IpSafeList");
             services.AddControllers();
             services.AddSwagger();
         }
@@ -35,7 +34,7 @@ namespace IpSafeExample.DockerProxy
             app.UseIpSafeFilter(cfg =>
             {
                 cfg.WithConfiguration<IpSafeTrustedProxiesSettings>(Configuration, (config, target) =>
-                    config.GetSection("IpSafeList:TrustedForwardedHeaders").Bind(target));
+                    config.GetSection("Security:ForwardedHeaders").Bind(target));
             });
 
             app.UseRouting();

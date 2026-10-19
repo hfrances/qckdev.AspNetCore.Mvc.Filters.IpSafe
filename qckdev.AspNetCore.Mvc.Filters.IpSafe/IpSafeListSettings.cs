@@ -1,4 +1,6 @@
 ﻿
+using qckdev.AspNetCore.ForwardedHeaders;
+
 namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 {
 
@@ -11,15 +13,15 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
         /// <summary>
         /// Gets or sets a list of valid IP addresses split by semicolon (;). Null for skip validation by ip address.
         /// </summary>
-        public string? IpAddresses { get; set; }
+        public DelimitedStringList? IpAddresses { get; set; }
         /// <summary>
         /// Gets or sets a list of valid IP network ranges split by semicolon (;). Null for skip validation by network.
         /// </summary>
-        public string? IpNetworks { get; set; }
+        public DelimitedStringList? IpNetworks { get; set; }
         /// <summary>
         /// Gets or sets a list of known proxies split by semicolon (;) to accept forwarded headers from. Null for skip validation.
         /// </summary>
-        public string? KnownProxies { get; set; } = string.Empty;
+        public DelimitedStringList? KnownProxies { get; set; } = new DelimitedStringList();
 
     }
 }
