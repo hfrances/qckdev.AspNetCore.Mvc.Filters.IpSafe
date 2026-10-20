@@ -51,7 +51,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(UseForwardedHeadersProjectReference)' != 'true'">
-    <PackageReference Include="qckdev.AspNetCore.ForwardedHeaders" Version="0.1.0-sketch.1799" />
+    <PackageReference Include="qckdev.AspNetCore.ForwardedHeaders" Version="0.1.0-*" />
   </ItemGroup>
   
   <!-- net8.0: versiones base del framework sin vulnerabilidades -->
