@@ -46,6 +46,7 @@ if (env.IsDevelopment())
 - Adds `x-ip-safe: true` to operations protected by `IpSafeFilter`.
 - Skips endpoints with `AllowAnyIpAddress`.
 - Injects embedded JS/CSS to render an `IP` badge in Swagger UI operation rows.
+- `UseIpSafeSwaggerUi()` builds relative asset URLs from `RoutePrefix`, so the UI assets work under `PathBase`.
 
 ## 🤝 Contributing
 Issues and pull requests are welcome! See the contribution guidelines (coming soon).
