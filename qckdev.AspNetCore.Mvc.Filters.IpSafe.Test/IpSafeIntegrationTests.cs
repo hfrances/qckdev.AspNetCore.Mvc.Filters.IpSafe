@@ -125,5 +125,56 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
 
             Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
         }
+
+        /// <summary>
+        /// Verifies that endpoint IpSafe using a named scheme resolves that scheme settings.
+        /// Expected result: HTTP 200 OK for an IP included in the Internal scheme.
+        /// </summary>
+        [TestMethod]
+        public void SchemeEndpoint_WithInternalSchemeIp_ReturnsOk()
+        {
+            using var client = new HttpClient { BaseAddress = LocalTestServiceManager.ServiceUri };
+            using var request = new HttpRequestMessage(HttpMethod.Get, "ipsafe/scheme-internal");
+            request.Headers.Add("X-Forwarded-For", "203.0.113.10");
+            request.Headers.Add("X-Forwarded-Proto", "http");
+
+            var response = client.SendAsync(request).GetAwaiter().GetResult();
+
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        /// <summary>
+        /// Verifies that endpoint IpSafe using a named scheme rejects addresses outside that scheme.
+        /// Expected result: HTTP 403 Forbidden for non-listed IP.
+        /// </summary>
+        [TestMethod]
+        public void SchemeEndpoint_WithIpOutsideInternalScheme_ReturnsForbidden()
+        {
+            using var client = new HttpClient { BaseAddress = LocalTestServiceManager.ServiceUri };
+            using var request = new HttpRequestMessage(HttpMethod.Get, "ipsafe/scheme-internal");
+            request.Headers.Add("X-Forwarded-For", "198.51.100.20");
+            request.Headers.Add("X-Forwarded-Proto", "http");
+
+            var response = client.SendAsync(request).GetAwaiter().GetResult();
+
+            Assert.AreEqual(HttpStatusCode.Forbidden, response.StatusCode);
+        }
+
+        /// <summary>
+        /// Verifies that multiple schemes in one endpoint are evaluated with OR semantics.
+        /// Expected result: HTTP 200 OK when IP matches any configured scheme.
+        /// </summary>
+        [TestMethod]
+        public void MultiSchemeEndpoint_WithPartnerSchemeIp_ReturnsOk()
+        {
+            using var client = new HttpClient { BaseAddress = LocalTestServiceManager.ServiceUri };
+            using var request = new HttpRequestMessage(HttpMethod.Get, "ipsafe/scheme-internal-or-partner");
+            request.Headers.Add("X-Forwarded-For", "198.51.100.20");
+            request.Headers.Add("X-Forwarded-Proto", "http");
+
+            var response = client.SendAsync(request).GetAwaiter().GetResult();
+
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        }
     }
 }

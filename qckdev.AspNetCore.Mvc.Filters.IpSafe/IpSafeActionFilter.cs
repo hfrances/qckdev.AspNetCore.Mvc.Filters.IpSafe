@@ -3,16 +3,13 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
+using qckdev.AspNetCore.ForwardedHeaders;
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
-#if NET10a_0_OR_GREATER
-using IPNetwork = System.Net.IPNetwork;
-#else
-using IPNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
-#endif
 
 namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 {
@@ -48,74 +45,178 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 
         private async Task ValidateAsync(ActionExecutingContext context)
         {
-            var settings = await SettingsProvider.GetSettingsAsync(context.HttpContext.RequestAborted);
-            var properties = IpSafeHelper.GetIpSafeProperties(settings);
+            var resolution = ResolveIpSafe(context);
             var remoteIp = IpSafeHelper.GetRemoteIpToIpv4(context.HttpContext);
-            var shouldEnforceIpSafe = ShouldEnforceIpSafe(context);
             var endpoint = context.HttpContext.Request.Path;
 
             Logger.LogDebug($"IP {(remoteIp?.ToString() ?? "<unknown>")} made a request to endpoint: {(endpoint.ToString() ?? "<unknown>")}");
-            if (!shouldEnforceIpSafe)
+            if (!resolution.EnforceIpSafe)
             {
                 // Do nothing. Endpoint/controller resolved as AllowAny or not IpSafe.
+                return;
             }
-            else if (properties.IpAddresses.Any() || properties.IpNetworks.Any())
-            {
-                if (remoteIp == null)
-                {
-                    throw new ArgumentException("Remote IP is NULL, may due to missing ForwardedHeaders.");
-                }
-                else if (!properties.IpAddresses.Contains(remoteIp) && !properties.IpNetworks.Any(x => x.Contains(remoteIp)))
-                {
-                    Logger.LogWarning($"Request rejected for IP {(remoteIp?.ToString() ?? "<unknown>")} to endpoint: {(endpoint.ToString() ?? "<unknown>")}");
-                    context.Result = new StatusCodeResult(StatusCodes.Status403Forbidden);
-                }
-            }
-            else
+
+            var settings = await GetSettingsAsync(resolution.Schemes, context.HttpContext.RequestAborted);
+            var properties = IpSafeHelper.GetIpSafeProperties(settings);
+            if (!(properties.IpAddresses.Any() || properties.IpNetworks.Any()))
             {
                 // Do Nothing. No restrictions defined.
+                return;
+            }
+
+            if (remoteIp == null)
+            {
+                throw new ArgumentException("Remote IP is NULL, may due to missing ForwardedHeaders.");
+            }
+
+            if (!properties.IpAddresses.Contains(remoteIp) && !properties.IpNetworks.Any(x => x.Contains(remoteIp)))
+            {
+                Logger.LogWarning($"Request rejected for IP {(remoteIp?.ToString() ?? "<unknown>")} to endpoint: {(endpoint.ToString() ?? "<unknown>")}");
+                context.Result = new StatusCodeResult(StatusCodes.Status403Forbidden);
             }
         }
 
-        static bool ShouldEnforceIpSafe(ActionExecutingContext context)
+        async Task<IpSafeListSettings?> GetSettingsAsync(string[] schemes, CancellationToken cancellationToken)
+        {
+            if (schemes == null || schemes.Length == 0)
+            {
+                return await SettingsProvider.GetSettingsAsync(cancellationToken);
+            }
+
+            if (!(SettingsProvider is IIpSafeSchemeSettingsProvider schemeSettingsProvider))
+            {
+                // Backward compatibility: providers without scheme support still work.
+                return await SettingsProvider.GetSettingsAsync(cancellationToken);
+            }
+
+            var settings = new List<IpSafeListSettings>();
+            foreach (var scheme in schemes)
+            {
+                var schemeSettings = await schemeSettingsProvider.GetSettingsAsync(scheme, cancellationToken);
+                if (schemeSettings != null)
+                {
+                    settings.Add(schemeSettings);
+                }
+            }
+
+            return Merge(settings);
+        }
+
+        static IpSafeListSettings? Merge(IEnumerable<IpSafeListSettings> settings)
+        {
+            if (settings == null)
+            {
+                return null;
+            }
+
+            var ipAddresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var ipNetworks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var knownProxies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in settings)
+            {
+                AddTokens(ipAddresses, item.IpAddresses);
+                AddTokens(ipNetworks, item.IpNetworks);
+                AddTokens(knownProxies, item.KnownProxies);
+            }
+
+            if (ipAddresses.Count == 0 && ipNetworks.Count == 0 && knownProxies.Count == 0)
+            {
+                return null;
+            }
+
+            return new IpSafeListSettings
+            {
+                IpAddresses = (ipAddresses.Count == 0 ? null : new DelimitedStringList(ipAddresses)),
+                IpNetworks = (ipNetworks.Count == 0 ? null : new DelimitedStringList(ipNetworks)),
+                KnownProxies = new DelimitedStringList(knownProxies),
+            };
+        }
+
+        static void AddTokens(HashSet<string> set, IEnumerable<string>? values)
+        {
+            foreach (var value in values ?? Array.Empty<string>())
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    set.Add(value.Trim());
+                }
+            }
+        }
+
+        static IpSafeResolution ResolveIpSafe(ActionExecutingContext context)
         {
             if (context.ActionDescriptor is ControllerActionDescriptor descriptor)
             {
                 var endpointDecision = GetLocalDecision(descriptor.MethodInfo);
-                if (endpointDecision.HasValue)
+                if (endpointDecision != null)
                 {
-                    return endpointDecision.Value;
+                    return endpointDecision;
                 }
 
                 var controllerDecision = GetLocalDecision(descriptor.ControllerTypeInfo);
-                if (controllerDecision.HasValue)
+                if (controllerDecision != null)
                 {
-                    return controllerDecision.Value;
+                    return controllerDecision;
                 }
             }
 
-            // Fallback for non-controller descriptors: preserve current behavior.
+            // Fallback for non-controller descriptors.
             if (context.Filters.OfType<AllowAnyIpAddressAttribute>().Any())
             {
-                return false;
+                return IpSafeResolution.NoEnforce;
             }
 
-            return context.Filters.OfType<IpSafeFilterAttribute>().Any();
+            var fallbackSchemes = ExtractSchemes(context.Filters.OfType<IpSafeFilterAttribute>());
+            if (context.Filters.OfType<IpSafeFilterAttribute>().Any())
+            {
+                return IpSafeResolution.Enforce(fallbackSchemes);
+            }
+
+            return IpSafeResolution.NoEnforce;
         }
 
-        static bool? GetLocalDecision(MemberInfo memberInfo)
+        static IpSafeResolution? GetLocalDecision(MemberInfo memberInfo)
         {
             if (memberInfo.GetCustomAttributes(typeof(AllowAnyIpAddressAttribute), true).Any())
             {
-                return false;
+                return IpSafeResolution.NoEnforce;
             }
 
-            if (memberInfo.GetCustomAttributes(typeof(IpSafeFilterAttribute), true).Any())
+            var filters = memberInfo.GetCustomAttributes(typeof(IpSafeFilterAttribute), true).OfType<IpSafeFilterAttribute>().ToArray();
+            if (filters.Any())
             {
-                return true;
+                return IpSafeResolution.Enforce(ExtractSchemes(filters));
             }
 
             return null;
+        }
+
+        static string[] ExtractSchemes(IEnumerable<IpSafeFilterAttribute> filters)
+        {
+            return (filters ?? Array.Empty<IpSafeFilterAttribute>())
+                .SelectMany(x => x.Schemes ?? Array.Empty<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        sealed class IpSafeResolution
+        {
+            public static readonly IpSafeResolution NoEnforce = new IpSafeResolution(false, Array.Empty<string>());
+
+            public bool EnforceIpSafe { get; }
+            public string[] Schemes { get; }
+
+            IpSafeResolution(bool enforceIpSafe, string[] schemes)
+            {
+                this.EnforceIpSafe = enforceIpSafe;
+                this.Schemes = (schemes ?? Array.Empty<string>());
+            }
+
+            public static IpSafeResolution Enforce(string[] schemes)
+            {
+                return new IpSafeResolution(true, schemes);
+            }
         }
     }
 }

@@ -9,7 +9,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
     /// IP Safe settings provider that uses static configuration from IOptions.
     /// This is the default implementation for backward compatibility.
     /// </summary>
-    public class IpSafeSettingsProvider : IIpSafeSettingsProvider
+    public class IpSafeSettingsProvider : IIpSafeSettingsProvider, IIpSafeSchemeSettingsProvider
     {
         private readonly IOptionsMonitor<IpSafeListSettings> _optionsMonitor;
 
@@ -30,6 +30,21 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
         public Task<IpSafeListSettings?> GetSettingsAsync(CancellationToken cancellationToken = default)
         {
             return Task.FromResult<IpSafeListSettings?>(_optionsMonitor.CurrentValue);
+        }
+
+        /// <summary>
+        /// Gets the IP Safe settings from named IOptions.
+        /// </summary>
+        /// <param name="scheme">Scheme name.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        public Task<IpSafeListSettings?> GetSettingsAsync(string scheme, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(scheme))
+            {
+                return GetSettingsAsync(cancellationToken);
+            }
+
+            return Task.FromResult<IpSafeListSettings?>(_optionsMonitor.Get(scheme));
         }
     }
 }

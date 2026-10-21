@@ -125,7 +125,7 @@ dotnet test --logger "console;verbosity=detailed" --no-build
   LocalTestServiceManager.StartIfNeeded()
     ├─ Create IHostBuilder
     ├─ Configure services (AddControllers, AddIpSafeFilter)
-    ├─ Configure middleware (UseForwardedHeaders, UseIpSafeFilter)
+    ├─ Configure middleware (UseIpSafeFilter registers forwarded-header processing)
     ├─ Start host on dynamic port
     └─ Wait for service ready (polling, 10s timeout)
   ↓
@@ -278,6 +278,12 @@ services.AddIpSafeFilter(new IpSafeListSettings
 ## Security Considerations
 
 ### Trusting Forwarded Headers
+
+By default, `UseIpSafeFilter()` configures:
+- `ForwardedHeaders = XForwardedFor | XForwardedProto`
+- `ForwardLimit = 1`
+
+Override these defaults only when your proxy topology requires it.
 
 ⚠️ **Only trust X-Forwarded-For when proxy is in KnownProxies**
 

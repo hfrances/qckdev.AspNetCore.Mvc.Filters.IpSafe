@@ -38,8 +38,9 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger
             string assetsRequestPath = DefaultAssetsRequestPath)
         {
             var path = NormalizeRequestPath(assetsRequestPath);
-            options.InjectJavascript($"{path}/ip-safe.js");
-            options.InjectStylesheet($"{path}/ip-safe.css");
+            var relativePath = GetRelativeAssetsPath(options.RoutePrefix, path);
+            options.InjectJavascript($"{relativePath}/ip-safe.js");
+            options.InjectStylesheet($"{relativePath}/ip-safe.css");
             return options;
         }
 
@@ -123,6 +124,15 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger
             }
 
             return value.TrimEnd('/');
+        }
+
+        static string GetRelativeAssetsPath(string routePrefix, string assetsRequestPath)
+        {
+            var routeDepth = string.IsNullOrWhiteSpace(routePrefix)
+                ? 0
+                : routePrefix.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries).Length;
+            var relativePrefix = string.Concat(Enumerable.Repeat("../", routeDepth));
+            return relativePrefix + assetsRequestPath.TrimStart('/');
         }
     }
 }

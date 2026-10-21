@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 using System;
@@ -8,9 +8,12 @@ using System.Threading.Tasks;
 
 namespace IpSafeExample.Controllers
 {
+    /// <summary>
+    /// Provides weather data protected by endpoint-level IpSafe filtering.
+    /// </summary>
     [ApiController]
-    [Route("[controller]"), IpSafeFilter]
-    public class WeatherForecastGlobalController : ControllerBase
+    [Route("[controller]")]
+    public class WeatherForecastController : ControllerBase
     {
         private static readonly string[] Summaries = new[]
         {
@@ -19,26 +22,18 @@ namespace IpSafeExample.Controllers
 
         private readonly ILogger<WeatherForecastController> _logger;
 
-        public WeatherForecastGlobalController(ILogger<WeatherForecastController> logger)
+        public WeatherForecastController(ILogger<WeatherForecastController> logger)
         {
             _logger = logger;
         }
 
-        [HttpGet]
+        /// <summary>
+        /// Returns weather forecasts for requests allowed by IpSafe rules.
+        /// </summary>
+        /// <response code="200">Forecast list returned successfully.</response>
+        /// <response code="403">Request IP is not allowed by IpSafe.</response>
+        [HttpGet, IpSafeFilter]
         public IEnumerable<WeatherForecast> Get()
-        {
-            var rng = new Random();
-            return Enumerable.Range(1, 5).Select(index => new WeatherForecast
-            {
-                Date = DateTime.Now.AddDays(index),
-                TemperatureC = rng.Next(-20, 55),
-                Summary = Summaries[rng.Next(Summaries.Length)]
-            })
-            .ToArray();
-        }
-
-        [HttpGet("public"), AllowAnyIpAddress]
-        public IEnumerable<WeatherForecast> GetAnyIpAddress()
         {
             var rng = new Random();
             return Enumerable.Range(1, 5).Select(index => new WeatherForecast

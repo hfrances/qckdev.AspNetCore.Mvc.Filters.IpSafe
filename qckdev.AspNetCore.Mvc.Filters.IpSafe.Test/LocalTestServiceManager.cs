@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
+using ForwardedHeadersType = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders;
 
 namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
 {
@@ -37,6 +38,18 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                         {
                             services.AddControllers().AddApplicationPart(typeof(IpSafeTestController).Assembly);
                             services.AddIpSafeFilter<IpSafeSettingsProvider>();
+                            services.AddIpSafeFilter("Internal", options =>
+                                options.Configure(settings =>
+                                {
+                                    settings.IpAddresses = "203.0.113.10";
+                                    settings.KnownProxies = string.Empty;
+                                }));
+                            services.AddIpSafeFilter("Partner", options =>
+                                options.Configure(settings =>
+                                {
+                                    settings.IpAddresses = "198.51.100.20";
+                                    settings.KnownProxies = string.Empty;
+                                }));
                             services.Configure<IpSafeListSettings>(options =>
                             {
                                 options.IpAddresses = "127.0.0.1;::1";
@@ -57,7 +70,7 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                                 options.KnownProxies.Add(IPAddress.Loopback);
                                 options.KnownProxies.Add(IPAddress.IPv6Loopback);
                                 options.ForwardLimit = 1;
-                                options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                                options.ForwardedHeaders = ForwardedHeadersType.XForwardedFor | ForwardedHeadersType.XForwardedProto;
                             });
                             app.UseEndpoints(endpoints =>
                             {
