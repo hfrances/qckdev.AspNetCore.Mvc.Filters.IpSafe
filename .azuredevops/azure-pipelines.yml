@@ -16,6 +16,10 @@ trigger:
       - .gitmodules
 
 parameters:
+  - name: PublishChangeDetection
+    displayName: "Enable change detection"
+    type: boolean
+    default: true
   - name: Deploy
     type: string
     values:
@@ -30,6 +34,16 @@ parameters:
       - auto
       - true
       - false
+    default: auto
+  - name: SupportsNuget
+    displayName: "Supports NuGet packages"
+    type: boolean
+    default: true
+  - name: Test
+    type: string
+    values:
+      - disabled
+      - auto
     default: auto
 
 pool:
@@ -53,9 +67,10 @@ resources:
 extends:
   template: standard/azure-pipelines-template-libnet.yml@azure-pipelines-repo
   parameters:
+    PublishChangeDetection: ${{ parameters.PublishChangeDetection }}
     Deploy: ${{ parameters.Deploy }}
     Analyze: ${{ parameters.Analyze }}
-    #Test: disabled
     Solution: '*.Build.sln'
     ForceVersion: true
-    SupportsNuget: true
+    SupportsNuget: ${{ parameters.SupportsNuget }}
+    Test: ${{ parameters.Test }}
