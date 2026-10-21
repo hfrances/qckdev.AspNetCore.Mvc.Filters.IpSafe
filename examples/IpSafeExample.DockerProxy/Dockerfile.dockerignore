@@ -1,0 +1,10 @@
+**
+!qckdev.AspNetCore.Mvc.Filters.IpSafe/
+!qckdev.AspNetCore.Mvc.Filters.IpSafe/**
+!qckdev.AspNetCore.ForwardedHeaders/
+!qckdev.AspNetCore.ForwardedHeaders/**
+**/bin/
+**/obj/
+**/.git/
+**/.vs/
+**/TestResults/

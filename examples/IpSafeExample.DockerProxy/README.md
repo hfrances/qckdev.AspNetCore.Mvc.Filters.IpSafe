@@ -1,33 +1,16 @@
 # IpSafeExample.DockerProxy
 
-This example runs `IpSafe` behind an Nginx reverse proxy using Docker Compose.
+ASP.NET Core API behind Nginx, with a public endpoint and two named IpSafe schemes.
 
-It demonstrates:
-- trusted proxy configuration (`KnownProxies`)
-- forwarded client IP processing (`X-Forwarded-For`)
-- spoofing protection when requests do not come from a trusted proxy
+## Configuration
 
-## Topology
+- Nginx (`172.28.0.10`) is the trusted proxy.
+- Nginx sends `X-Forwarded-For: 198.51.100.10` to simulate the client IP.
+- `Office` allows `198.51.100.10`.
+- `Partner` allows `198.51.100.20`.
+- The attacker container (`172.28.0.30`) is outside both schemes and is not a trusted proxy.
 
-- `ipsafe-nginx` (`172.28.0.10`) -> trusted proxy
-- `ipsafe-api` (`172.28.0.20`) -> ASP.NET Core API protected by `IpSafeFilter`
-- `ipsafe-attacker` (`172.28.0.30`) -> helper container to simulate spoofing
-
-## Configuration Highlights
-
-`appsettings.json`:
-- allowed client IP: `198.51.100.10`
-- trusted proxy: `172.28.0.10`
-
-The API uses:
-
-```csharp
-app.UseIpSafeFilter(cfg =>
-{
-  cfg.WithConfiguration<IpSafeTrustedProxiesSettings>(Configuration, (config, target) =>
-    config.GetSection("Security:ForwardedHeaders").Bind(target));
-});
-```
+Allowed-client rules are in `Security:IpSafeSchemes`. Trusted proxies are in `Security:ForwardedHeaders`. The existing weather endpoints use the default `Security:IpSafeList`.
 
 ## Run
 
@@ -37,44 +20,48 @@ From this folder:
 docker compose up --build -d
 ```
 
-## Validate
+## Endpoints
 
-### 1. Through trusted proxy (expected `200`)
+| URL through Nginx | IP rule | Expected status |
+|---|---|---|
+| http://localhost:8080/ipsafe/public | Any IP | `200` |
+| http://localhost:8080/ipsafe/office | `Office` | `200` |
+| http://localhost:8080/ipsafe/partner | `Partner` | `403` |
 
-```bash
-curl -i http://localhost:8080/WeatherForecast
-```
-
-Why it works:
-- request comes through trusted Nginx (`172.28.0.10`)
-- Nginx forwards `X-Forwarded-For: 198.51.100.10`
-- `198.51.100.10` is allowed in `Security:IpSafeList:IpAddresses`
-- `172.28.0.10` is trusted in `Security:ForwardedHeaders:KnownProxies`
-
-### 2. Direct call to API with spoofed header (expected `403`)
+The public action uses `[AllowAnyIpAddress]`. The protected actions use `[IpSafeFilter("Office")]` and `[IpSafeFilter("Partner")]`.
 
 ```bash
-curl -i -H "X-Forwarded-For: 198.51.100.10" http://localhost:8081/WeatherForecast
+curl -i http://localhost:8080/ipsafe/public
+curl -i http://localhost:8080/ipsafe/office
+curl -i http://localhost:8080/ipsafe/partner
 ```
 
-Why it is blocked:
-- direct caller is not the trusted proxy (`KnownProxies`)
-- spoofed `X-Forwarded-For` is ignored
-- real remote IP is not in allowed list
-
-### 3. Spoofing from another container (expected `403`)
+## Automated checks
 
 ```bash
-docker compose exec attacker curl -i -H "X-Forwarded-For: 198.51.100.10" http://api:8080/WeatherForecast
+docker compose exec -T attacker sh /checks/verify.sh
 ```
+
+The script waits for the API and checks this matrix:
+
+| Request from attacker | Public | Office | Partner |
+|---|---|---|---|
+| Through Nginx | `200` | `200` | `403` |
+| Direct to API with forged `X-Forwarded-For: 198.51.100.10` | `200` | `403` | `403` |
+| Direct to API with forged `X-Forwarded-For: 198.51.100.20` | `200` | `403` | `403` |
+
+It exits with code `1` on a failed check and prints `All 9 checks passed.` on success.
+
+The API is also available directly on port `8081` for manual spoofing checks:
+
+```bash
+curl -i -H "X-Forwarded-For: 198.51.100.10" http://localhost:8081/ipsafe/office
+```
+
+Expected status: `403`. Forwarded headers from callers other than Nginx are ignored.
 
 ## Stop
 
 ```bash
 docker compose down
 ```
-
-## Notes
-
-- `UseIpSafeFilter()` defaults include `ForwardLimit = 1` and `X-Forwarded-For | X-Forwarded-Proto`.
-- If you change trusted proxies/networks at runtime, restart the API container.

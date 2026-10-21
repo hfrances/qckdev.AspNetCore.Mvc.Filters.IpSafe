@@ -22,11 +22,12 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
             var services = new ServiceCollection();
             services.AddIpSafeFilter<IpSafeSettingsProvider>();
             services.AddIpSafeFilter("Internal", options =>
-            {
-                options.IpAddresses = "203.0.113.10";
-                options.IpNetworks = "10.0.0.0/24";
-                options.KnownProxies = "127.0.0.1";
-            });
+                options.Configure(settings =>
+                {
+                    settings.IpAddresses = "203.0.113.10";
+                    settings.IpNetworks = "10.0.0.0/24";
+                    settings.KnownProxies = "127.0.0.1";
+                }));
 
             using var provider = services.BuildServiceProvider();
             using var scope = provider.CreateScope();
@@ -56,8 +57,8 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                 .Build();
             var services = new ServiceCollection();
             services.AddIpSafeFilter<IpSafeSettingsProvider>(configuration, "IpSafe");
-            services.AddOptions<IpSafeListSettings>("Internal")
-                .Bind(configuration.GetSection("IpSafe"));
+            services.AddIpSafeFilter("Internal", options =>
+                options.WithConfiguration(configuration, "IpSafe"));
 
             using var provider = services.BuildServiceProvider();
             var settings = provider.GetRequiredService<IOptionsMonitor<IpSafeListSettings>>().CurrentValue;

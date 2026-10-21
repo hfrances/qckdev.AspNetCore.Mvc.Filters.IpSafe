@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using IpSafeExample.DockerProxy.Swagger;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
+using qckdev.AspNetCore.ForwardedHeaders;
 
 namespace IpSafeExample.DockerProxy
 {
@@ -19,23 +20,27 @@ namespace IpSafeExample.DockerProxy
 
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddIpSafeFilter<IpSafeSettingsProvider>(Configuration, "Security:IpSafeList");
+            services.AddForwardedHeadersSettingsProvider<ForwardedHeadersSettingsProvider>(options =>
+                    options.WithConfiguration(Configuration, "Security:ForwardedHeaders"))
+                .AddIpSafeFilter<IpSafeSettingsProvider>(options =>
+                    options.WithConfiguration(Configuration, "Security:IpSafeList"))
+                .AddIpSafeFilter(IpSafeSchemes.Office, options =>
+                    options.WithConfiguration(Configuration, $"Security:IpSafeSchemes:{IpSafeSchemes.Office}"))
+                .AddIpSafeFilter(IpSafeSchemes.Partner, options =>
+                    options.WithConfiguration(Configuration, $"Security:IpSafeSchemes:{IpSafeSchemes.Partner}"));
             services.AddControllers();
             services.AddSwagger();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            app.UseForwardedHeaders(options =>
+                options.WithProvider<ForwardedHeadersSettingsProvider>());
+
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
             }
-
-            app.UseIpSafeFilter(cfg =>
-            {
-                cfg.WithConfiguration<IpSafeTrustedProxiesSettings>(Configuration, (config, target) =>
-                    config.GetSection("Security:ForwardedHeaders").Bind(target));
-            });
 
             app.UseRouting();
 

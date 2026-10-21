@@ -1,8 +1,8 @@
 services:
   api:
     build:
-      context: ../..
-      dockerfile: examples/IpSafeExample.DockerProxy/Dockerfile
+      context: ../../..
+      dockerfile: qckdev.AspNetCore.Mvc.Filters.IpSafe/examples/IpSafeExample.DockerProxy/Dockerfile
     container_name: ipsafe-api
     ports:
       - "8081:8080"
@@ -26,9 +26,13 @@ services:
   attacker:
     image: curlimages/curl:8.12.1
     container_name: ipsafe-attacker
-    command: ["sh", "-c", "sleep infinity"]
+    entrypoint: ["sh"]
+    command: ["-c", "sleep infinity"]
     depends_on:
       - api
+      - nginx
+    volumes:
+      - ./checks:/checks:ro
     networks:
       ipsafe_net:
         ipv4_address: 172.28.0.30

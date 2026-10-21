@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -30,23 +31,27 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
         /// </summary>
         /// <param name="services">The service collection.</param>
         /// <param name="scheme">The scheme name.</param>
-        /// <param name="configureSettings">A delegate that allows configuring IpSafeListSettings.</param>
+        /// <param name="configureOptions">Configures the named options builder.</param>
         /// <returns>The service collection for chaining.</returns>
         public static IServiceCollection AddIpSafeFilter(
             this IServiceCollection services,
             string scheme,
-            Action<IpSafeListSettings> configureSettings)
+            Action<OptionsBuilder<IpSafeListSettings>> configureOptions)
         {
+            if (services == null)
+            {
+                throw new ArgumentNullException(nameof(services));
+            }
             if (string.IsNullOrWhiteSpace(scheme))
             {
                 throw new ArgumentException("Scheme name cannot be null or empty.", nameof(scheme));
             }
-            if (configureSettings == null)
+            if (configureOptions == null)
             {
-                throw new ArgumentNullException(nameof(configureSettings));
+                throw new ArgumentNullException(nameof(configureOptions));
             }
 
-            services.Configure(scheme, configureSettings);
+            configureOptions(services.AddOptions<IpSafeListSettings>(scheme));
             return services;
         }
 
@@ -68,12 +73,13 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
                 throw new ArgumentNullException(nameof(settings));
             }
 
-            return AddIpSafeFilter(services, scheme, config =>
-            {
-                config.IpAddresses = settings.IpAddresses;
-                config.IpNetworks = settings.IpNetworks;
-                config.KnownProxies = settings.KnownProxies;
-            });
+            return AddIpSafeFilter(services, scheme, options => 
+                options.Configure(config =>
+                {
+                    config.IpAddresses = settings.IpAddresses;
+                    config.IpNetworks = settings.IpNetworks;
+                    config.KnownProxies = settings.KnownProxies;
+                }));
         }
 
         /// <summary>
@@ -102,48 +108,42 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
             string sectionName)
             where TProvider : class, IIpSafeSettingsProvider
         {
-            if (configuration == null)
-            {
-                throw new ArgumentNullException(nameof(configuration));
-            }
-            if (string.IsNullOrWhiteSpace(sectionName))
-            {
-                throw new ArgumentException("Section name cannot be null or empty.", nameof(sectionName));
-            }
-
-            services.AddOptions<IpSafeListSettings>()
-                .Bind(configuration.GetSection(sectionName));
-            return AddIpSafeFilterCore<TProvider>(services, null);
+            return AddIpSafeFilter<TProvider>(services, options =>
+                options.WithConfiguration(configuration, sectionName));
         }
 
         /// <summary>
-        /// Add IP address validation with custom settings provider and IpSafeListSettings configuration.
+        /// Add IP address validation with a custom settings provider and options builder configuration.
         /// </summary>
         /// <typeparam name="TProvider">The type of the IP Safe settings provider.</typeparam>
         /// <param name="services">The service collection.</param>
-        /// <param name="configureSettings">A delegate that allows configuring IpSafeListSettings.</param>
+        /// <param name="configureOptions">Configures the default options builder.</param>
         /// <returns>The service collection for chaining.</returns>
         public static IServiceCollection AddIpSafeFilter<TProvider>(
             this IServiceCollection services,
-            Action<IpSafeListSettings>? configureSettings = null)
+            Action<OptionsBuilder<IpSafeListSettings>> configureOptions)
             where TProvider : class, IIpSafeSettingsProvider
         {
-            return AddIpSafeFilterCore<TProvider>(services, configureSettings);
+            if (configureOptions == null)
+            {
+                throw new ArgumentNullException(nameof(configureOptions));
+            }
+            return AddIpSafeFilterCore<TProvider>(services, configureOptions);
         }
 
         /// <summary>
         /// Add IP address validation using default settings provider from IpSafeListSettings instance.
-        /// [OBSOLETE] Use AddIpSafeFilter&lt;IpSafeSettingsProvider&gt;(Action&lt;IpSafeListSettings&gt;) for inline configuration instead.
+        /// [OBSOLETE] Use AddIpSafeFilter&lt;IpSafeSettingsProvider&gt;(options =&gt; options.Configure(...)) instead.
         /// </summary>
-        [Obsolete("Use AddIpSafeFilter<IpSafeSettingsProvider>(opts => { ... }) for inline configuration instead.", false)]
+        [Obsolete("Use AddIpSafeFilter<IpSafeSettingsProvider>(options => options.Configure(settings => { ... })) instead.", false)]
         public static IServiceCollection AddIpSafeFilter(this IServiceCollection services, IpSafeListSettings settings)
         {
-            return AddIpSafeFilterCore<IpSafeSettingsProvider>(services, config =>
+            return AddIpSafeFilterCore<IpSafeSettingsProvider>(services, options => options.Configure(config =>
             {
                 config.IpAddresses = settings?.IpAddresses;
                 config.IpNetworks = settings?.IpNetworks;
                 config.KnownProxies = settings?.KnownProxies;
-            });
+            }));
         }
 
         /// <summary>
@@ -355,15 +355,15 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe
 
         static IServiceCollection AddIpSafeFilterCore<TProvider>(
             IServiceCollection services,
-            Action<IpSafeListSettings>? configureSettings)
+            Action<OptionsBuilder<IpSafeListSettings>>? configureOptions)
             where TProvider : class, IIpSafeSettingsProvider
         {
-            ConfigureDefaultForwardedHeaders(services);
-
-            if (configureSettings != null)
+            if (services == null)
             {
-                services.Configure<IpSafeListSettings>(configureSettings);
+                throw new ArgumentNullException(nameof(services));
             }
+            ConfigureDefaultForwardedHeaders(services);
+            configureOptions?.Invoke(services.AddOptions<IpSafeListSettings>());
 
             services.AddScoped<IIpSafeSettingsProvider, TProvider>();
             return services;

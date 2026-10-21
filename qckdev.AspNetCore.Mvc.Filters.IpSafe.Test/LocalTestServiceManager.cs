@@ -39,15 +39,17 @@ namespace qckdev.AspNetCore.Mvc.Filters.IpSafe.Test
                             services.AddControllers().AddApplicationPart(typeof(IpSafeTestController).Assembly);
                             services.AddIpSafeFilter<IpSafeSettingsProvider>();
                             services.AddIpSafeFilter("Internal", options =>
-                            {
-                                options.IpAddresses = "203.0.113.10";
-                                options.KnownProxies = string.Empty;
-                            });
+                                options.Configure(settings =>
+                                {
+                                    settings.IpAddresses = "203.0.113.10";
+                                    settings.KnownProxies = string.Empty;
+                                }));
                             services.AddIpSafeFilter("Partner", options =>
-                            {
-                                options.IpAddresses = "198.51.100.20";
-                                options.KnownProxies = string.Empty;
-                            });
+                                options.Configure(settings =>
+                                {
+                                    settings.IpAddresses = "198.51.100.20";
+                                    settings.KnownProxies = string.Empty;
+                                }));
                             services.Configure<IpSafeListSettings>(options =>
                             {
                                 options.IpAddresses = "127.0.0.1;::1";

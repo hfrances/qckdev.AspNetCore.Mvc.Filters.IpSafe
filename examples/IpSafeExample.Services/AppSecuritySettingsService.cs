@@ -1,21 +1,33 @@
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
+using qckdev.AspNetCore.ForwardedHeaders;
+using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace IpSafeExample.Services
 {
-    sealed class AppSecuritySettingsService : IAppSecuritySettingsService
+    // Replace the configuration reads with a database, Key Vault, or another service as needed.
+    sealed class AppSecuritySettingsService : IForwardedHeadersSettingsProvider, IIpSafeSettingsProvider
     {
-        readonly IOptionsMonitor<IpSafeServiceSettings> _options;
+        readonly IConfiguration _configuration;
 
-        public AppSecuritySettingsService(IOptionsMonitor<IpSafeServiceSettings> options)
+        public AppSecuritySettingsService(IConfiguration configuration)
         {
-            _options = options;
+            _configuration = configuration;
         }
 
-        public Task<IpSafeServiceSettings> GetIpSafeSettingsAsync(CancellationToken cancellationToken = default)
+        Task<ForwardedHeadersSettings?> IForwardedHeadersSettingsProvider.GetSettingsAsync(CancellationToken cancellationToken)
         {
-            return Task.FromResult(_options.CurrentValue ?? new IpSafeServiceSettings());
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<ForwardedHeadersSettings?>(_configuration.GetSection("Security:ForwardedHeaders")
+                .Get<ForwardedHeadersSettings>());
+        }
+
+        Task<IpSafeListSettings?> IIpSafeSettingsProvider.GetSettingsAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<IpSafeListSettings?>(_configuration.GetSection("Security:IpSafeList")
+                .Get<IpSafeListSettings>());
         }
     }
 }

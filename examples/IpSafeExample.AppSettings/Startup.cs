@@ -21,8 +21,10 @@ namespace IpSafeExample.AppSettings
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            // Modern setup: no legacy AddIpSafeFilter(settings) overload.
-            services.AddIpSafeFilter<IpSafeSettingsProvider>(Configuration, "Security:IpSafeList");
+            services.AddForwardedHeadersSettingsProvider<ForwardedHeadersSettingsProvider>(options =>
+                options.WithConfiguration(Configuration, "Security:ForwardedHeaders"));
+            services.AddIpSafeFilter<IpSafeSettingsProvider>(options =>
+                options.WithConfiguration(Configuration, "Security:IpSafeList"));
             services.AddControllers();
             services.AddSwagger();
         }
@@ -30,13 +32,14 @@ namespace IpSafeExample.AppSettings
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            app.UseForwardedHeaders(options =>
+                options.WithProvider<ForwardedHeadersSettingsProvider>());
+
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
             }
 
-            app.UseForwardedHeaders(options =>
-                options.WithConfiguration(Configuration, "Security:ForwardedHeaders"));
             app.UseHttpsRedirection();
             app.UseRouting();
 
