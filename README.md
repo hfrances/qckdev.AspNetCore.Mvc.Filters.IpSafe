@@ -1,463 +1,395 @@
 [![NuGet Version](https://img.shields.io/nuget/v/qckdev.AspNetCore.Mvc.Filters.IpSafe.svg)](https://www.nuget.org/packages/qckdev.AspNetCore.Mvc.Filters.IpSafe)
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=qckdev.AspNetCore.Mvc.Filters.IpSafe&metric=alert_status)](https://sonarcloud.io/dashboard?id=qckdev.AspNetCore.Mvc.Filters.IpSafe)
 [![Code Coverage](https://sonarcloud.io/api/project_badges/measure?project=qckdev.AspNetCore.Mvc.Filters.IpSafe&metric=coverage)](https://sonarcloud.io/dashboard?id=qckdev.AspNetCore.Mvc.Filters.IpSafe)
-![Azure Pipelines Status](https://hfrances.visualstudio.com/qckdev/_apis/build/status/qckdev.AspNetCore.Mvc.Filters.IpSafe?branchName=master)
+![Azure Pipelines Status](https://dev.azure.com/hfrances/qckdev/_apis/build/status/qckdev.AspNetCore.Mvc.Filters.IpSafe?branchName=master)
 
 # qckdev.AspNetCore.Mvc.Filters.IpSafe
 
-Provides a solution to grant/deny access to some IP ranges with extensible configuration strategies.
+IP allowlists for ASP.NET Core MVC controllers and actions. Protect endpoints with attributes, select different lists with named schemes, and load rules from configuration or your own services.
 
 ## 📦 Packages
 
-- `qckdev.AspNetCore.Mvc.Filters.IpSafe`: IP filtering attributes, settings providers, and middleware integration.
-- `qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger`: Swagger/OpenAPI integration for visual IP-safe endpoint markers.
+- `qckdev.AspNetCore.Mvc.Filters.IpSafe`: IP filtering attributes and settings providers.
+- `qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger`: optional OpenAPI metadata and IP badges in Swagger UI. See [Show protection in Swagger](#show-protection-in-swagger).
 
 ## 🛠️ Installation
 
-```bash
+~~~bash
 dotnet add package qckdev.AspNetCore.Mvc.Filters.IpSafe
-```
+~~~
 
 ## ⚡ Quick Start
 
-This section is incremental on purpose:
-1. Start with one global list.
-2. Configure trusted proxies/networks for forwarded headers.
-3. Add endpoint/controller attributes.
-4. Add named schemes.
-5. Add custom providers (optional).
+### Protect your first endpoint
 
-If you are new to ASP.NET Core security, implement each step and verify before going to the next one.
+This example allows local requests to a protected controller action. Start without a reverse proxy; if you use one, also follow [Run behind a reverse proxy](#run-behind-a-reverse-proxy).
 
-## Before You Start
+Add the allowed client addresses to `appsettings.json`:
 
-`IpSafe` uses two different concepts:
-
-- Allowed client IPs/networks: who is allowed to call protected endpoints (`IpAddresses`, `IpNetworks`).
-- Trusted proxies/networks: which reverse proxies are allowed to provide `X-Forwarded-*` (`KnownProxies`, `KnownNetworks`).
-
-If your API is behind Nginx, Azure Front Door, API Gateway, Traefik, etc., configure trusted proxies/networks explicitly.
-
-### `KnownProxies` vs `KnownNetworks` (trusted forwarded headers)
-
-- `KnownProxies`: exact proxy IPs you trust to send `X-Forwarded-*` headers (for example one or more fixed reverse-proxy IPs).
-- `KnownNetworks`: trusted proxy CIDR ranges (for example internal proxy subnet or load balancer network).
-
-These settings **do not define who can access your endpoint**.  
-They define **from which proxy origins forwarded headers are trusted**.
-
-Use them together with `IpAddresses`/`IpNetworks` (allowed clients).
-
-| Scenario | `KnownProxies` | `KnownNetworks` | Recommended value |
-|---|---|---|---|
-| No proxy | Optional | Optional | Leave both empty. `IpSafe` will evaluate direct `RemoteIpAddress`. |
-| With fixed proxy IPs | Required | Optional | Set trusted proxy IPs in `KnownProxies` (for example `10.0.0.10;10.0.0.11`). |
-| With proxy subnet/range | Optional | Required | Set trusted CIDR ranges in `KnownNetworks` (for example `10.0.0.0/24`). |
-| Hybrid (some fixed proxies + subnet) | Required | Required | Fill both: fixed proxies in `KnownProxies` and dynamic proxy ranges in `KnownNetworks`. |
-
-> Default forwarded headers behavior in `UseIpSafeFilter()`:
-> - `ForwardedHeaders = XForwardedFor | XForwardedProto`
-> - `ForwardLimit = 1`
->
-> You only need `WithForwardedHeaders(...)` when you want to override these defaults.
-## Step 1 - Basic Setup (single list)
-
-Use this first if you want a minimal working setup. If your API is not behind a reverse proxy, omit `KnownProxies` and `KnownNetworks` from `Security:ForwardedHeaders`.
-
-`appsettings.json`
-
-Allowed-client lists (`IpAddresses`, `IpNetworks`) and trusted-proxy lists (`KnownProxies`, `KnownNetworks`) accept either a JSON array or a semicolon-delimited string. Keep the two concerns in sibling sections under `Security`, and use one format consistently in each example.
-
-Array form:
-
-```json
+~~~json
 {
   "Security": {
-    "ForwardedHeaders": {
-      "ForwardedHeaders": "XForwardedFor, XForwardedProto",
-      "ForwardLimit": 1,
-      "KnownProxies": [ "10.0.0.10" ]
-    },
     "IpSafeList": {
-      "IpAddresses": [ "203.0.113.25" ],
-      "IpNetworks": [ "203.0.113.0/24" ]
+      "IpAddresses": [ "127.0.0.1", "::1" ]
     }
   }
 }
-```
+~~~
 
-Semicolon-delimited string form:
+Register the provider in `Program.cs`:
 
-```json
-{
-  "Security": {
-    "ForwardedHeaders": {
-      "ForwardedHeaders": "XForwardedFor, XForwardedProto",
-      "ForwardLimit": 1,
-      "KnownProxies": "10.0.0.10"
-    },
-    "IpSafeList": {
-      "IpAddresses": "203.0.113.25",
-      "IpNetworks": "203.0.113.0/24"
-    }
-  }
-}
-```
-
-`Startup.cs`
-
-```cs
+~~~csharp
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using qckdev.AspNetCore.ForwardedHeaders;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 
-public void ConfigureServices(IServiceCollection services)
-{
-  services.AddIpSafeFilter<IpSafeSettingsProvider>(options =>
-      options.WithConfiguration(Configuration, "Security:IpSafeList"));
-  services.AddForwardedHeadersSettingsProvider<ForwardedHeadersSettingsProvider>(options =>
-      options.WithConfiguration(Configuration, "Security:ForwardedHeaders"));
-  services.AddControllers();
-}
+var builder = WebApplication.CreateBuilder(args);
 
-public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-{
-  app.UseForwardedHeaders(options =>
-    options.WithProvider<ForwardedHeadersSettingsProvider>());
-  app.UseRouting();
-  app.UseEndpoints(endpoints => endpoints.MapControllers());
-}
-```
+builder.Services.AddControllers();
+builder.Services.AddIpSafeFilter<IpSafeSettingsProvider>(options =>
+    options.WithConfiguration(builder.Configuration, "Security:IpSafeList"));
 
-Configure values in code with `Configure`:
+var app = builder.Build();
 
-```cs
-services.AddIpSafeFilter<IpSafeSettingsProvider>(options =>
-  options.Configure(settings =>
-  {
-    settings.IpAddresses = "127.0.0.1;::1";
-    settings.IpNetworks = null;
-  }));
-```
+app.MapControllers();
+app.Run();
+~~~
 
-## Step 2 - Trusted Proxies/Networks for Forwarded Headers
+Add a controller:
 
-When using `qckdev.AspNetCore.ForwardedHeaders` together with IpSafe, configure trusted proxies/networks in the sibling `Security:ForwardedHeaders` section and register only `UseForwardedHeaders(...)`. Do not also call `UseIpSafeFilter(...)`, because that method registers its own forwarded-headers middleware.
-
-### Option A - From `appsettings.json` via the standard provider
-
-`appsettings.json`
-
-```json
-{
-  "Security": {
-    "ForwardedHeaders": {
-      "ForwardedHeaders": "XForwardedFor, XForwardedProto",
-      "ForwardLimit": 1,
-      "KnownProxies": [ "127.0.0.1", "::1" ],
-      "KnownNetworks": [ "10.0.0.0/8" ]
-    },
-    "IpSafeList": {
-      "IpAddresses": [ "127.0.0.1", "::1" ],
-      "IpNetworks": [ "192.168.1.0/24" ]
-    }
-  }
-}
-```
-
-`Startup.cs`
-
-```cs
-services.AddForwardedHeadersSettingsProvider<ForwardedHeadersSettingsProvider>(options =>
-    options.WithConfiguration(Configuration, "Security:ForwardedHeaders"));
-
-app.UseForwardedHeaders(options =>
-  options.WithProvider<ForwardedHeadersSettingsProvider>());
-```
-
-Use `options.Configure(settings => ...)` to configure forwarded headers in code. See the [ForwardedHeaders registration alternatives](../qckdev.AspNetCore.ForwardedHeaders/README.md#registration-alternatives) for examples.
-
-### Option B - From service via `WithProvider`
-
-Use a separate forwarded-headers provider when proxy settings come from a service. The provider is queried once at startup; restart the API to apply changes.
-
-```cs
-using qckdev.AspNetCore.ForwardedHeaders;
-
-services.AddForwardedHeadersSettingsProvider<MyForwardedHeadersProvider>();
-
-app.UseForwardedHeaders(options =>
-  options.WithProvider<MyForwardedHeadersProvider>());
-
-public sealed class MyForwardedHeadersProvider : IForwardedHeadersSettingsProvider
-{
-  public Task<ForwardedHeadersSettings?> GetSettingsAsync(CancellationToken cancellationToken = default)
-  {
-    return Task.FromResult<ForwardedHeadersSettings?>(new ForwardedHeadersSettings
-    {
-      ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
-        | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto,
-      ForwardLimit = 1,
-      KnownProxies = "10.0.0.10",
-      KnownNetworks = ""
-    });
-  }
-}
-```
-
-`IpSafeList` and its providers contain only allowed-client rules. Keep proxy trust in `ForwardedHeaders` and its own provider.
-
-`UseIpSafeFilter(...)` remains available for legacy compatibility. New setups use the separate middleware above and do not register both.
-
-## Step 3 - Protect endpoints with attributes
-
-```cs
+~~~csharp
 using Microsoft.AspNetCore.Mvc;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
 
 [ApiController]
+[Route("network")]
+public class NetworkController : ControllerBase
+{
+    [HttpGet("protected")]
+    [IpSafeFilter]
+    public IActionResult Protected() => Ok("allowed");
+
+    [HttpGet("public")]
+    public IActionResult Public() => Ok("public");
+}
+~~~
+
+A local request to `/network/protected` reaches the action. A client outside the configured list receives `403 Forbidden`. The public action has no IP restriction.
+
+`AddIpSafeFilter` registers the settings provider; it does not protect every endpoint. Apply `[IpSafeFilter]` to each action or controller you want to protect. Its parameterless form uses the default list.
+
+**An empty or missing list means no IP restrictions, even on an action with `[IpSafeFilter]`.** See [Cybersecurity](#cybersecurity) before deploying.
+
+### Configure allowed clients
+
+Use `IpAddresses` for individual client addresses and `IpNetworks` for CIDR ranges. A client is allowed if its IP matches either list. For example, the following `Security:IpSafeList` section allows local requests and clients in the example subnet:
+
+~~~json
+{
+  "IpAddresses": [ "127.0.0.1", "::1" ],
+  "IpNetworks": [ "192.0.2.0/24" ]
+}
+~~~
+
+Both properties also accept semicolon-separated strings:
+
+~~~json
+{
+  "IpAddresses": "127.0.0.1;::1",
+  "IpNetworks": "192.0.2.0/24"
+}
+~~~
+
+Use your clients' actual addresses and networks. Setting either property to `null`, `""`, or `[]` adds no rules for that property. If both contain no rules, IP filtering is skipped.
+
+### Apply attributes to controllers and actions
+
+Apply `[IpSafeFilter]` to a controller to protect its actions, then use `[AllowAnyIpAddress]` for public exceptions:
+
+~~~csharp
+[ApiController]
 [Route("weather")]
-[IpSafeFilter] // Controller-level protection
+[IpSafeFilter]
 public class WeatherController : ControllerBase
 {
-  [HttpGet("secure")]
-  public IActionResult Secure() => Ok("protected");
+    [HttpGet("secure")]
+    public IActionResult Secure() => Ok("protected");
 
-  [HttpGet("public")]
-  [AllowAnyIpAddress] // Endpoint-level override
-  public IActionResult Public() => Ok("public");
+    [HttpGet("public")]
+    [AllowAnyIpAddress]
+    public IActionResult Public() => Ok("public");
 }
-```
+~~~
 
-### Attribute precedence rules
+An action's attributes take precedence over its controller's attributes. At the same level, `[AllowAnyIpAddress]` takes precedence over `[IpSafeFilter]`.
 
-- Endpoint level has priority over controller level.
-- At the same level, `AllowAnyIpAddress` has priority over `IpSafeFilter`.
+| Controller | Action | IP filtering |
+| --- | --- | --- |
+| `[IpSafeFilter]` | No IP attribute | Uses the controller's list or schemes |
+| `[IpSafeFilter]` | `[AllowAnyIpAddress]` | Skipped |
+| `[AllowAnyIpAddress]` | `[IpSafeFilter]` | Uses the action's list or schemes |
+| `[IpSafeFilter("Internal")]` | `[IpSafeFilter("Partner")]` | Uses Partner only |
 
-Examples:
-- Controller `[IpSafeFilter]` + endpoint `[AllowAnyIpAddress]` => allows any.
-- Controller `[AllowAnyIpAddress]` + endpoint `[IpSafeFilter]` => checks IP.
+### Use named schemes
 
-## Step 4 - Use named schemes (multiple IP profiles)
+Named schemes let different endpoints use different allowlists, such as Internal and Partner. Add these sections to `appsettings.json`:
 
-Named schemes let you define different IP allowlists and select them per endpoint.
-Use this when one API exposes endpoints for different consumers (internal, partners, operations, etc.).
-
-### 4.1 Register schemes
-
-```cs
-// Default/global list (used by [IpSafeFilter] without parameters)
-services.AddIpSafeFilter<IpSafeSettingsProvider>(options =>
-    options.WithConfiguration(Configuration, "Security:IpSafeList"));
-
-// Named scheme: Internal
-services.AddIpSafeFilter("Internal", options =>
-  options.WithConfiguration(Configuration, "IpSafeSchemes:Internal"));
-
-// Named scheme: Partner
-services.AddIpSafeFilter("Partner", options =>
-    options.Configure(settings =>
-    {
-      settings.IpAddresses = "198.51.100.20;198.51.100.21";
-      settings.IpNetworks = "198.51.100.0/24";
-    }));
-```
-
-`appsettings.json`
-
-```json
+~~~json
 {
   "Security": {
     "IpSafeList": {
-      "IpAddresses": "127.0.0.1;::1"
-    }
-  },
-  "IpSafeSchemes": {
-    "Internal": {
-      "IpAddresses": "10.2.1.20;10.2.1.21",
-      "IpNetworks": "10.2.1.0/24"
+      "IpAddresses": [ "127.0.0.1", "::1" ]
     },
-    "Partner": {
-      "IpAddresses": "198.51.100.20",
-      "IpNetworks": "198.51.100.0/24"
+    "IpSafeSchemes": {
+      "Internal": {
+        "IpNetworks": [ "10.2.1.0/24" ]
+      },
+      "Partner": {
+        "IpAddresses": [ "198.51.100.20", "198.51.100.21" ]
+      }
     }
   }
 }
-```
+~~~
 
-### 4.2 Use schemes in attributes
+Replace the original provider registration with this chain to keep the default list and add the named settings:
 
-```cs
-[ApiController]
-[Route("secure")]
-public class SecureController : ControllerBase
-{
-  [HttpGet("default")]
-  [IpSafeFilter] // Uses default IpSafeList
-  public IActionResult DefaultProfile() => Ok();
+~~~csharp
+builder.Services
+    .AddIpSafeFilter<IpSafeSettingsProvider>(options =>
+        options.WithConfiguration(builder.Configuration, "Security:IpSafeList"))
+    .AddIpSafeFilter("Internal", options =>
+        options.WithConfiguration(builder.Configuration, "Security:IpSafeSchemes:Internal"))
+    .AddIpSafeFilter("Partner", options =>
+        options.WithConfiguration(builder.Configuration, "Security:IpSafeSchemes:Partner"));
+~~~
 
-  [HttpGet("internal")]
-  [IpSafeFilter("Internal")] // Uses only Internal scheme
-  public IActionResult InternalProfile() => Ok();
+The generic registration supplies the provider used by the attributes. The named registrations configure additional lists for that provider.
 
-  [HttpGet("internal-or-partner")]
-  [IpSafeFilter("Internal", "Partner")] // OR semantics: match any configured scheme
-  public IActionResult InternalOrPartner() => Ok();
-}
-```
+Select the schemes on controller actions:
 
-## Step 5 - Custom providers
+~~~csharp
+[HttpGet("default")]
+[IpSafeFilter]
+public IActionResult DefaultProfile() => Ok();
 
-Use IpSafe providers for allowed-client rules from dynamic sources (database, external services, centralized configuration). Configure proxy trust separately through IForwardedHeadersSettingsProvider; those settings are resolved once at startup.
+[HttpGet("internal")]
+[IpSafeFilter("Internal")]
+public IActionResult InternalProfile() => Ok();
 
-### 5.1 Custom provider (default profile only)
+[HttpGet("internal-or-partner")]
+[IpSafeFilter("Internal", "Partner")]
+public IActionResult InternalOrPartner() => Ok();
+~~~
 
-Implement `IIpSafeSettingsProvider` when you only need the default profile.
+Multiple schemes combine their rules with OR semantics: an IP matching any selected scheme is allowed. Specifying a scheme does not also apply the default list.
 
-```cs
+With the standard provider, if none of the selected schemes contains rules, the request has no IP restrictions. Check scheme names and configuration before publishing.
+
+### Configure values in code
+
+Use `Configure` instead of `WithConfiguration` when the allowed addresses are held in code:
+
+~~~csharp
+builder.Services.AddIpSafeFilter<IpSafeSettingsProvider>(options =>
+    options.Configure(settings =>
+    {
+        settings.IpAddresses = "127.0.0.1;::1";
+        settings.IpNetworks = "192.0.2.0/24";
+    }));
+~~~
+
+The same callback is available for a named scheme:
+
+~~~csharp
+builder.Services.AddIpSafeFilter("Partner", options =>
+    options.Configure(settings =>
+    {
+        settings.IpAddresses = "198.51.100.20;198.51.100.21";
+    }));
+~~~
+
+### Load settings from a service
+
+A service implementing `IIpSafeSettingsProvider` can supply the default list from a database, Key Vault, another API, or configuration.
+
+This working example reads configuration inside the service. Replace the read with a call to your own source as needed:
+
+~~~csharp
+using Microsoft.Extensions.Configuration;
 using qckdev.AspNetCore.Mvc.Filters.IpSafe;
+using System.Threading;
+using System.Threading.Tasks;
 
-public class DatabaseIpSafeSettingsProvider : IIpSafeSettingsProvider
+public sealed class AppSecuritySettingsService : IIpSafeSettingsProvider
 {
-  private readonly IIpSecurityRepository _repository;
+    private readonly IConfiguration _configuration;
 
-  public DatabaseIpSafeSettingsProvider(IIpSecurityRepository repository)
-  {
-    _repository = repository;
-  }
-
-  public async Task<IpSafeListSettings?> GetSettingsAsync(CancellationToken cancellationToken = default)
-  {
-    var config = await _repository.GetCurrentConfigAsync(cancellationToken);
-    if (config == null)
+    public AppSecuritySettingsService(IConfiguration configuration)
     {
-      return null;
+        _configuration = configuration;
     }
 
-    return new IpSafeListSettings
+    public Task<IpSafeListSettings?> GetSettingsAsync(
+        CancellationToken cancellationToken = default)
     {
-      IpAddresses = config.IpAddresses,
-      IpNetworks = config.IpNetworks
-    };
-  }
-}
+        cancellationToken.ThrowIfCancellationRequested();
 
-services.AddIpSafeFilter<DatabaseIpSafeSettingsProvider>();
-```
-
-### 5.2 Custom provider with schemes
-
-Implement `IIpSafeSchemeSettingsProvider` to resolve settings by scheme name.
-
-```cs
-using qckdev.AspNetCore.Mvc.Filters.IpSafe;
-
-public class DatabaseIpSafeSchemeSettingsProvider : IIpSafeSchemeSettingsProvider
-{
-  private readonly IIpSecurityRepository _repository;
-
-  public DatabaseIpSafeSchemeSettingsProvider(IIpSecurityRepository repository)
-  {
-    _repository = repository;
-  }
-
-  public Task<IpSafeListSettings?> GetSettingsAsync(CancellationToken cancellationToken = default)
-  {
-    // Backward-compatible default profile
-    return GetSettingsAsync("Default", cancellationToken);
-  }
-
-  public async Task<IpSafeListSettings?> GetSettingsAsync(string scheme, CancellationToken cancellationToken = default)
-  {
-    var config = await _repository.GetBySchemeAsync(scheme, cancellationToken);
-    if (config == null)
-    {
-      return null;
+        return Task.FromResult<IpSafeListSettings?>(
+            _configuration.GetSection("Security:IpSafeList")
+                .Get<IpSafeListSettings>());
     }
+}
+~~~
 
-    return new IpSafeListSettings
-    {
-      IpAddresses = config.IpAddresses,
-      IpNetworks = config.IpNetworks
-    };
+Replace the standard provider registration with:
+
+~~~csharp
+builder.Services.AddIpSafeFilter<AppSecuritySettingsService>();
+~~~
+
+IpSafe queries the provider when validating a protected request. If the source is remote or expensive to query, handle caching in your service.
+
+To support named schemes, change the service to implement `IIpSafeSchemeSettingsProvider`, keep its default-list method, and add this overload:
+
+~~~csharp
+public Task<IpSafeListSettings?> GetSettingsAsync(
+    string scheme,
+    CancellationToken cancellationToken = default)
+{
+    cancellationToken.ThrowIfCancellationRequested();
+
+    return Task.FromResult<IpSafeListSettings?>(
+        _configuration.GetSection("Security:IpSafeSchemes:" + scheme)
+            .Get<IpSafeListSettings>());
+}
+~~~
+
+A provider implementing only `IIpSafeSettingsProvider` uses its default list even when an attribute specifies scheme names. Implement `IIpSafeSchemeSettingsProvider` when the selected names must determine the rules.
+
+See [IpSafeExample.Services](examples/IpSafeExample.Services) for a complete service-based application.
+
+### Run behind a reverse proxy
+
+IpSafe checks `HttpContext.Connection.RemoteIpAddress`. Behind a reverse proxy, use `qckdev.AspNetCore.ForwardedHeaders` to restore the client IP before controller actions run.
+
+Keep the two concerns in separate configuration sections:
+
+- `Security:IpSafeList` and `Security:IpSafeSchemes` identify allowed clients.
+- `Security:ForwardedHeaders` identifies proxies allowed to supply forwarded headers.
+
+Add the proxy settings alongside the existing IpSafe sections:
+
+~~~json
+{
+  "Security": {
+    "ForwardedHeaders": {
+      "KnownProxies": [ "10.0.0.10" ]
+    }
   }
 }
-```
+~~~
 
-Registration:
+Use the actual address of your proxy. The forwarded-headers library processes `XForwardedFor` and `XForwardedProto` by default, with `ForwardLimit = 1`.
 
-```cs
-services.AddIpSafeFilter<DatabaseIpSafeSchemeSettingsProvider>();
-```
+Add this service registration:
 
-## Recommended Validation Flow
+~~~csharp
+using qckdev.AspNetCore.ForwardedHeaders;
 
-After each step, validate with real requests:
+builder.Services.AddForwardedHeadersSettingsProvider<ForwardedHeadersSettingsProvider>(options =>
+    options.WithConfiguration(builder.Configuration, "Security:ForwardedHeaders"));
+~~~
 
-1. Call protected endpoint from allowed IP and verify `200`.
-2. Call protected endpoint from non-allowed IP and verify `403`.
-3. If behind proxy, test trusted and untrusted proxy scenarios (`X-Forwarded-For` spoofing checks).
-4. If using schemes, test each scheme endpoint independently.
+Then add the middleware before routing, authentication, or other middleware that uses the client IP or scheme:
 
-## Backward Compatibility
+~~~csharp
+app.UseForwardedHeaders(options =>
+    options.WithProvider<ForwardedHeadersSettingsProvider>());
+~~~
 
-Provider-only registration and filter attributes remain available:
-- `services.AddIpSafeFilter<IpSafeSettingsProvider>()`
-- `[IpSafeFilter]` without parameters
-- `IIpSafeSettingsProvider.GetSettingsAsync(...)`
+Proxy settings from this provider are read at application startup. This differs from the IpSafe provider, which supplies client rules during request validation.
 
-Callbacks receive an options builder. Use `WithConfiguration(Configuration, sectionName)` to load a section or `Configure(settings => ...)` to assign values. The `(Configuration, sectionName)` registration overload remains available.
+See the [ForwardedHeaders README](https://github.com/hfrances/qckdev.AspNetCore.ForwardedHeaders) for trusted networks, custom proxy-settings providers, and allowed hosts. Its [Nginx configuration example](https://github.com/hfrances/qckdev.AspNetCore.ForwardedHeaders#configure-nginx-as-a-reverse-proxy) covers forwarding headers and path prefixes.
 
-Named schemes are additive:
-- use `AddIpSafeFilter("SchemeName", ...)`
-- use `[IpSafeFilter("SchemeName")]`
+Existing `UseIpSafeFilter(...)` integrations remain available for compatibility. For new applications, use the separate `UseForwardedHeaders(...)` setup above. Do not register both: `UseIpSafeFilter(...)` also adds forwarded-headers middleware.
 
-## Security Checklist (important)
+### Show protection in Swagger
 
-- Always configure trusted proxies (`KnownProxies`) correctly.
-- Never trust `X-Forwarded-For` from arbitrary clients.
-- Run `UseForwardedHeaders(...)` before middleware that reads the client IP or request scheme.
-- Add tests for spoofing scenarios (trusted vs untrusted proxy).
+Install the optional package:
 
-## Nginx Configuration
+~~~bash
+dotnet add package qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger
+~~~
 
-```nginx
-proxy_set_header Host $host;
-proxy_set_header X-Real-IP $remote_addr;
-proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-proxy_set_header X-Forwarded-Proto $scheme;
+Configure metadata generation, serve the embedded assets, and enable the UI badges:
 
-real_ip_header X-Forwarded-For;
-#set_real_ip_from 0.0.0.0/0;
-set_real_ip_from 10.0.0.0/8;
-set_real_ip_from 172.16.0.0/12;
-set_real_ip_from 192.168.0.0/16;
-real_ip_recursive on;
-```
+~~~csharp
+using qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger;
 
-## Private Address Ranges
+// Service registration
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new() { Title = "My API", Version = "v1" });
+    options.AddIpSafeSwagger();
+});
 
-|  Class  |      Mask      |      From       |       To        |
-|:-------:|:--------------:|:---------------:|:---------------:|
-| Class A |   10.0.0.0/8   |     10.0.0.0    |  10.255.255.255 |
-| Class B |  172.16.0.0/12 |    172.16.0.0   |  172.31.255.255 |
-| Class C | 192.168.0.0/16 |   192.168.0.0   | 192.168.255.255 |
+// Application pipeline, before app.Run()
+app.UseIpSafeSwaggerUiStaticFiles();
+app.UseSwagger(setupAction: null);
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("v1/swagger.json", "v1");
+    options.UseIpSafeSwaggerUi();
+});
+~~~
 
-## Testing
+The badges identify actions selected for IP filtering; they do not confirm that their configured lists contain rules or that a particular client is allowed. See the [Swagger package README](qckdev.AspNetCore.Mvc.Filters.IpSafe.Swagger/README.md) for details.
 
-This library includes integration and unit tests covering:
-- basic IP filtering
-- attribute precedence (controller vs endpoint)
-- proxy trust and `X-Forwarded-For` spoofing protection
-- named-scheme resolution and multi-scheme behavior
+## 🛡️ Cybersecurity
 
-For detailed testing documentation, see [Integration Testing Guide](docs/TESTING.md).
+### Check missing rules and scheme names
+
+IpSafe treats an empty list as unrestricted access. Registering a provider or applying an attribute alone does not guarantee that a request will be rejected.
+
+| Configuration on an action with `[IpSafeFilter]` | Result |
+| --- | --- |
+| Non-empty rules matching the client IP | IP check passes |
+| Non-empty rules not matching the client IP | `403 Forbidden` |
+| Provider returns `null`, or both client lists have no rules | IP filtering is skipped |
+| A scheme-aware provider resolves no client rules for any selected scheme | IP filtering is skipped |
+
+A misspelled scheme or missing configuration section can therefore leave an action unrestricted. If some selected schemes have rules and others are missing or empty, the rules that exist are combined. Verify that the expected lists are populated and that a disallowed client is rejected.
+
+Review `[AllowAnyIpAddress]` exceptions too: they explicitly skip IP filtering according to the attribute precedence rules above.
+
+### Trust only your reverse proxies
+
+Only trust proxy addresses you control. A broad `KnownNetworks` range shared with other workloads allows those workloads to supply forwarded client information if they can reach the API. Do not trust arbitrary clients or use a catch-all network such as `0.0.0.0/0`.
+
+Keep `ForwardLimit` consistent with the actual proxy chain and restrict direct access to the backend. Without correct proxy handling, the filter may evaluate the proxy's IP instead of the client's, or accept a forged client IP.
+
+If you also enable `XForwardedHost`, follow the [ForwardedHeaders security guidance](https://github.com/hfrances/qckdev.AspNetCore.ForwardedHeaders) to configure allowed public hosts.
+
+### Verify access before publishing
+
+Test the deployed network path, including its proxies:
+
+1. An allowed client reaches a protected action.
+2. A disallowed client receives `403` from the IP filter.
+3. Public exceptions remain reachable.
+4. Each named scheme rejects clients outside its own rules.
+5. Missing settings and misspelled scheme names are detected before deployment.
+6. Forwarded headers from untrusted sources cannot impersonate an allowed client.
+
+IP filtering identifies a network origin, not a user. Clients may share an address through NAT or a proxy; retain authentication and authorization where the endpoint requires them.
+
+The [examples guide](examples/README.md) includes runnable applications and a Docker proxy demonstration.
 
 ## 🤝 Contributing
-Issues and pull requests are welcome! See the contribution guidelines (coming soon).
+
+Issues and pull requests are welcome! See the contribution guidelines (coming soon). For the repository's test setup, see the [Integration Testing Guide](docs/TESTING.md).
 
 ## 📜 License
+
 This project is licensed under the terms of the [MIT License](LICENSE).
